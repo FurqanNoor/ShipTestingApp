@@ -565,3 +565,9 @@ for(const entry of await readdir(STUDIES,{withFileTypes:true})){
 }
 server.listen(PORT,HOST,()=>console.log(`Hull Test Bench + OpenFOAM: http://${HOST}:${PORT}\nJobs remain in ${RUNS}\nImage: ${IMAGE}\nResources: ${defaultCores} of ${maxCores} CPU cores by default (choose in the app), ${memory} RAM. CFD output remains unvalidated until convergence and physical testing.`));
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{for(const id of [...studyRunner.queuedIds])await studyRunner.cancel(id);for(const id of [...studyRunner.activeIds])await studyRunner.cancel(id);if(active&&active.status!=='cancelled')await cancel(active);server.close(()=>process.exit(0));});
+// A long-running service must not die because one child process closed its pipe early (a refused SSH upload did exactly
+// that). Such stream errors are logged; anything else is still fatal.
+process.on('uncaughtException',error=>{
+  if(['EPIPE','ECONNRESET','ERR_STREAM_DESTROYED'].includes(error?.code)){console.error('Ignored stream error:',error.message);return;}
+  console.error(error);process.exit(1);
+});

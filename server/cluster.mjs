@@ -73,15 +73,43 @@ function sshArgs(c){
   return a;
 }
 
+// Login nodes throttle bursts of new SSH connections (sshd MaxStartups): 27 simultaneous uploads got some refused, and
+// the broken pipe crashed the server. At most SSH_SLOTS connections run at once; transient refusals are retried.
+const SSH_SLOTS=Math.max(1,Number(process.env.CFD_SSH_SLOTS)||4);
+let sshActive=0;const sshWaiting=[];
+async function withSshSlot(fn){
+  if(sshActive>=SSH_SLOTS)await new Promise(r=>sshWaiting.push(r));
+  sshActive++;
+  try{return await fn();}finally{sshActive--;sshWaiting.shift()?.();}
+}
+const RETRY_MS=Math.max(1,Number(process.env.CFD_SSH_RETRY_MS)||2000);
+const TRANSIENT=/Connection (refused|reset|closed)|kex_exchange_identification|banner exchange|Broken pipe|EPIPE|ECONNRESET|did not answer in time|Could not reach the cluster/i;
+async function retrying(fn,attempts=5){
+  for(let i=1;;i++){
+    try{return await fn();}
+    catch(error){if(i>=attempts||!TRANSIENT.test(String(error?.message)))throw error;await new Promise(r=>setTimeout(r,RETRY_MS*i*(1+Math.random()*.75)));}
+  }
+}
 /** Run one remote command. Resolves with stdout; rejects with a readable message (stderr) on failure. */
 export function ssh(c,command,{timeoutMs=120_000,stdin=null}={}){
+  // A command fed from a stream cannot be replayed, so only stdin-free commands are retried here (upload retries itself).
+  const once=()=>withSshSlot(()=>sshOnce(c,command,{timeoutMs,stdin:typeof stdin==='function'?stdin():stdin}));
+  return stdin&&typeof stdin!=='function'?once():retrying(once);
+}
+function sshOnce(c,command,{timeoutMs,stdin}){
   return new Promise((res,rej)=>{
     const child=spawn(SSH[0],[...SSH.slice(1),...sshArgs(c),target(c),command],{stdio:[stdin?'pipe':'ignore','pipe','pipe'],windowsHide:true});
-    let out='',err='';const timer=setTimeout(()=>{child.kill();rej(new Error('The cluster did not answer in time (SSH timeout).'));},timeoutMs);
+    let out='',err='',settled=false;const finish=(f,v)=>{if(!settled){settled=true;clearTimeout(timer);if(f===rej&&stdin){stdin.unpipe?.();stdin.destroy?.();}f(v);}};
+    const timer=setTimeout(()=>{child.kill();finish(rej,new Error('The cluster did not answer in time (SSH timeout).'));},timeoutMs);
     child.stdout.on('data',d=>{out+=d;});child.stderr.on('data',d=>{err+=d;});
-    child.once('error',e=>{clearTimeout(timer);rej(new Error(e.code==='ENOENT'?'The ssh command was not found. Install the OpenSSH client (built into Windows 10/11, macOS and Linux).':e.message));});
-    child.once('exit',code=>{clearTimeout(timer);if(code===0)res(out);else rej(new Error(explainSsh(err)||`Remote command failed (exit ${code}).`));});
-    if(stdin){stdin.pipe(child.stdin);stdin.once('error',e=>{child.kill();rej(e);});}
+    child.once('error',e=>finish(rej,new Error(e.code==='ENOENT'?'The ssh command was not found. Install the OpenSSH client (built into Windows 10/11, macOS and Linux).':e.message)));
+    child.once('exit',code=>{if(code===0)finish(res,out);else finish(rej,new Error(explainSsh(err)||`Remote command failed (exit ${code}).`));});
+    if(stdin){
+      // ssh can exit (e.g. a refused connection) while the stream is still writing: that EPIPE must not crash the server.
+      child.stdin.on('error',e=>finish(rej,new Error(`Upload connection closed: ${e.message}. ${explainSsh(err)}`)));
+      stdin.on('error',e=>{child.kill();finish(rej,e);});
+      stdin.pipe(child.stdin);
+    }
   });
 }
 function explainSsh(err){
@@ -98,11 +126,15 @@ function explainSsh(err){
 // the working directory rather than a -C argument for the same reason.
 const TAR=(()=>{if(process.platform!=='win32')return 'tar';const p=join(process.env.SystemRoot||'C:\\Windows','System32','tar.exe');return existsSync(p)?p:'tar';})();
 export function upload(c,localDir,remoteDir){
-  const tar=spawn(TAR,['--exclude=case-input.zip','-cf','-','.'],{cwd:localDir,stdio:['ignore','pipe','pipe'],windowsHide:true});
-  return ssh(c,`mkdir -p '${remoteDir}' && tar -C '${remoteDir}' -xf -`,{stdin:tar.stdout,timeoutMs:600_000});
+  // Each attempt starts a fresh tar stream, so a refused or dropped connection can be retried from the beginning.
+  const stream=()=>{const tar=spawn(TAR,['--exclude=case-input.zip','-cf','-','.'],{cwd:localDir,stdio:['ignore','pipe','ignore'],windowsHide:true});tar.on('error',()=>{});tar.stdout.once('close',()=>{if(tar.exitCode===null)tar.kill();});return tar.stdout;};
+  return ssh(c,`mkdir -p '${remoteDir}' && tar -C '${remoteDir}' -xf -`,{stdin:stream,timeoutMs:600_000});
 }
 /** Fetch the result files (logs and postProcessing) of a finished remote case into the local case folder. */
 export function download(c,remoteDir,localDir){
+  return retrying(()=>withSshSlot(()=>downloadOnce(c,remoteDir,localDir)));
+}
+function downloadOnce(c,remoteDir,localDir){
   return new Promise((res,rej)=>{
     const s=spawn(SSH[0],[...SSH.slice(1),...sshArgs(c),target(c),`cd '${remoteDir}' && tar -cf - log.* service-runner.log postProcessing 2>/dev/null; true`],{stdio:['ignore','pipe','pipe'],windowsHide:true});
     const t=spawn(TAR,['-xf','-'],{cwd:localDir,stdio:['pipe','ignore','pipe'],windowsHide:true});
