@@ -1,5 +1,6 @@
 import {buildXlsx,type Sheet,type Cell} from '../xlsx';
 import type {CfdSelection} from './cfdPanel';
+import {cfdLeaderboard} from '../cfd/leaderboard';
 
 type RecordValue=Record<string,unknown>;
 const record=(v:unknown):RecordValue=>v&&typeof v==='object'&&!Array.isArray(v)?v as RecordValue:{};
@@ -93,6 +94,24 @@ export function allStudiesSheet(studies:unknown[]):Sheet{
   return {name:'All hulls',rows,widths:[28,22,10,30,14,12,12,10,14,22,14,16,14,18,14,18,20,18,14,24,70,38],freezeRows:1};
 }
 
+/** Hackathon ranking sheet: drag + roll + stability from the CFD results, with fairness status per hull. */
+export function rankingSheet(studies:unknown[]):Sheet{
+  const {rows,reference,conditionIds}=cfdLeaderboard(studies);
+  const out:Cell[][]=[['Place','Hull','Status','Mean calm drag (mN)','Mean max roll (deg)','Mean initial GM (mm)','Failed tests (sinks/capsizes)','Drag score','Roll score','Stability score','Total score','Settings','Note']];
+  for(const r of rows)out.push([r.place,r.name,r.status==='ranked'?'Ranked':r.status==='incomplete'?'Incomplete':'Different settings',r.dragMN,r.rollDeg,r.gmMm,r.failures,r.scoreDrag,r.scoreRoll,r.scoreStability,r.total,r.settingsLabel,r.note]);
+  out.push([]);
+  out.push(['Rules','Only hulls tested with identical settings and the same tests are ranked together.'+(reference?` Reference settings: ${reference.speed==='quick'?'Quick':'Full'}, ${reference.backend}, ${reference.cores??'?'} cores, setup ${reference.protocol}. Tests: ${conditionIds.join(', ')}.`:'')]);
+  out.push(['','The best hull in each category scores 100 and the rest in proportion (drag and roll: lower is better; stability = initial GM: higher is better). Total = average. Hulls that sink or capsize in any test rank below all hulls without failures. CFD numbers are unvalidated screening results.']);
+  return {name:'Ranking',rows:out,widths:[8,28,18,18,18,18,16,12,12,14,12,48,80],freezeRows:1};
+}
+function rankingHtml(studies:unknown[]):string{
+  const {rows,reference}=cfdLeaderboard(studies);
+  if(!rows.length)return '';
+  const n=(v:number|null,d=1)=>v===null?'—':v.toFixed(d);
+  const status=(r:(typeof rows)[number])=>r.status==='ranked'?(r.failures?`<small class="auto-rank-bad">${r.failures} failed</small>`:''):`<small class="auto-rank-bad">${r.status==='incomplete'?'Incomplete':'Different settings'}</small>`;
+  return `<details class="cfd-advanced auto-ranking" open><summary>Hackathon ranking (${rows.filter(r=>r.status==='ranked').length} ranked)</summary><div class="auto-table-wrap"><table class="auto-queue-table auto-rank-table"><thead><tr><th>#</th><th>Hull</th><th>Calm drag<br>mN</th><th>Max roll<br>deg</th><th>GM<br>mm</th><th>Score</th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.place===1&&rows.length>1?'auto-rank-first':''}" title="${esc(r.note||r.settingsLabel)}"><td>${r.place??'—'}</td><td><b>${esc(r.name)}</b>${status(r)}</td><td>${n(r.dragMN,2)}<small>${n(r.scoreDrag,0)} pts</small></td><td>${n(r.rollDeg)}<small>${n(r.scoreRoll,0)} pts</small></td><td>${n(r.gmMm)}<small>${n(r.scoreStability,0)} pts</small></td><td><b>${n(r.total,0)}</b></td></tr>`).join('')}</tbody></table></div><p class="cfd-note">${reference?`Ranked together: ${esc(reference.speed==='quick'?'Quick':'Full')} · ${esc(reference.backend==='cluster'?'cluster':'this computer')} · ${reference.cores??'?'} cores · setup ${esc(reference.protocol)}. `:''}Best in each category = 100 points, the rest in proportion; the score is their average. A hull that sinks or capsizes in any test ranks below all hulls without failures. Hover a row for details. CFD results are screening values, not validated measurements.</p></details>`;
+}
+
 export interface AutomaticPanelOptions {
   button?:HTMLElement|null;
   getSelection:()=>CfdSelection|null;
@@ -109,7 +128,7 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
   document.body.appendChild(dialog);
   let selected:CfdSelection|null=null,study:RecordValue|null=null,available=false,alive=true,submitting=false;
   let timer=0,checking=false;
-  let choice=loadChoice(),maxCores=1,defaultCores=1;
+  let choice=loadChoice(),maxCores=1,defaultCores=1,backend:'local'|'cluster'='local',clusterHost='';
   let stream:EventSource|null=null,streamJob:string|null=null,logLines=0;
   const LOG_LIMIT=2000;
   let estimate:RecordValue|null=null,estimateKey='',estimateTimer=0,estimateSeq=0;
@@ -128,7 +147,7 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
   const estimateFor=(id:string)=>list(estimate?.conditions).find(c=>c.id===id)??null;
   const designVerdict=(e:RecordValue|null)=>!!e&&e.blocked===true&&['sinks','stability-failure'].includes(String(record(e.hint).verdict));
   const runnable=()=>choice.conditions.filter(id=>estimateFor(id)?.blocked!==true||designVerdict(estimateFor(id)));
-  const selectedEstimateS=()=>{if(!estimate)return null;let t=0;for(const id of runnable()){const e=estimateFor(id);if(!e)return null;t+=finite(e.predictedS)??0;}return t;};
+  const selectedEstimateS=()=>{if(!estimate)return null;let t=0;for(const id of runnable()){const e=estimateFor(id);if(!e)return null;const p=finite(e.predictedS)??0;t=backend==='cluster'?Math.max(t,p):t+p;}return t;};
   function setActions(){
     const count=runnable().length,blocked=choice.conditions.length-count,queueActive=!!queue&&finite(queue.studies)!==null&&(queue.studies as number)>0;
     const est=selectedEstimateS(),runBtn=get<HTMLButtonElement>('auto-run');
@@ -256,8 +275,9 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
     const verdicts=choice.conditions.filter(id=>designVerdict(estimateFor(id)));
     const partial=ids.filter(id=>estimateFor(id)?.laterPhaseError);
     const parts:string[]=[];
-    if(ids.length)parts.push(`${ids.length} test${ids.length===1?'':'s'} → up to ${solves} solver run${solves===1?'':'s'}, one at a time.`);
-    if(est!==null&&ids.length)parts.push(`Estimated time: ≈ ${formatDuration(est)} on ${wanted} core${wanted===1?'':'s'}${estimate?.calibrated===true?' (calibrated on this computer)':' (rough until the first run on this computer finishes; it learns from every run)'}.`);
+    const where=backend==='cluster'?`on ${clusterHost||'the cluster'}`:'on this computer';
+    if(ids.length)parts.push(`${ids.length} test${ids.length===1?'':'s'} → up to ${solves} solver run${solves===1?'':'s'}, ${backend==='cluster'?'all at once on the cluster':'one at a time'}.`);
+    if(est!==null&&ids.length)parts.push(`Estimated time: ≈ ${formatDuration(est)} ${backend==='cluster'?`on ${clusterHost||'the cluster'} (${wanted} cores per test, plus any wait for free nodes)`:`on ${wanted} core${wanted===1?'':'s'}`}${estimate?.calibrated===true?` (calibrated ${where})`:` (rough until the first run ${where} finishes; it learns from every run)`}.`);
     else if(ids.length&&selected&&available)parts.push('Estimating time…');
     const fixes=Array.isArray(estimate?.repairNotes)?(estimate!.repairNotes as unknown[]).map(String):[];
     if(fixes.length)parts.push(`CAD automatically cleaned up: ${fixes.join(' ')}`);
@@ -316,7 +336,9 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
   }
   function renderQueue(){
     const box=dialog.querySelector<HTMLElement>('#auto-queue');if(!box||!dialog.open)return;
-    const activeIds=[String(queue?.activeId??''),...(Array.isArray(queue?.queuedIds)?(queue!.queuedIds as unknown[]).map(String):[])].filter(Boolean);
+    // On the cluster several hulls run at once (activeIds); locally one does (activeId).
+    const running=Array.isArray(queue?.activeIds)?(queue!.activeIds as unknown[]).map(String):[String(queue?.activeId??'')];
+    const activeIds=[...new Set([...running,...(Array.isArray(queue?.queuedIds)?(queue!.queuedIds as unknown[]).map(String):[])])].filter(Boolean);
     const byId=new Map(studies.map(s=>[String(s.id),s]));
     const upcoming=activeIds.map(id=>byId.get(id)).filter(Boolean) as RecordValue[];
     const history=studies.filter(s=>terminal(s.status)).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0,30);
@@ -328,7 +350,7 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
       const state=terminal(s.status)?`Finished · ${[`${ok} completed`,bad?`${bad} failed`:'',stopped?`${stopped} stopped`:''].filter(Boolean).join(', ')}`:`${String(s.status)} · ${finite(p.solvesFinished)??0}/${finite(p.solvesMaximum)??'?'} runs`;
       return `<tr class="${viewing?'viewing':''}"><td><b>${esc(s.name??'Hull')}</b><small>${cs.length} test${cs.length===1?'':'s'} · ${speed}</small></td><td>${esc(state)}<small>${esc(etaText(s))}</small></td><td class="auto-queue-actions"><button type="button" class="btn small" data-view="${esc(s.id)}">${viewing?'Showing':'View'}</button>${terminal(s.status)?'':`<button type="button" class="btn small" data-cancel="${esc(s.id)}">${s.status==='queued'?'Remove':'Stop'}</button>`}</td></tr>`;
     };
-    const html=`<div class="auto-queue-head"><div><b>Test queue</b><span>${upcoming.length?`${upcoming.length} hull${upcoming.length===1?'':'s'} running or waiting${left!==null?` · ≈ ${formatDuration(left)} left · all done around ${clockTime(queue?.finishAt)}`:' · estimating…'}`:'Nothing running'}</span></div>${upcoming.length?'<button type="button" class="btn small" id="auto-stop-all">Stop everything</button>':''}</div>${upcoming.length?`<div class="auto-table-wrap"><table class="auto-queue-table"><tbody>${upcoming.map(row).join('')}</tbody></table></div>`:''}${history.length?`<details class="cfd-advanced auto-history"${upcoming.length?'':' open'}><summary>Finished (${history.length})</summary><div class="auto-table-wrap"><table class="auto-queue-table"><tbody>${history.map(row).join('')}</tbody></table></div></details>`:''}<div class="cfd-downloads"><button type="button" class="btn small" id="auto-all-excel">Download all hulls (Excel)</button></div>`;
+    const html=`<div class="auto-queue-head"><div><b>Test queue</b><span>${upcoming.length?`${upcoming.length} hull${upcoming.length===1?'':'s'} running or waiting${left!==null?` · ≈ ${formatDuration(left)} left · all done around ${clockTime(queue?.finishAt)}`:' · estimating…'}`:'Nothing running'}</span></div>${upcoming.length?'<button type="button" class="btn small" id="auto-stop-all">Stop everything</button>':''}</div>${upcoming.length?`<div class="auto-table-wrap"><table class="auto-queue-table"><tbody>${upcoming.map(row).join('')}</tbody></table></div>`:''}${history.length?`<details class="cfd-advanced auto-history"${upcoming.length?'':' open'}><summary>Finished (${history.length})</summary><div class="auto-table-wrap"><table class="auto-queue-table"><tbody>${history.map(row).join('')}</tbody></table></div></details>`:''}${rankingHtml(studies)}<div class="cfd-downloads"><button type="button" class="btn small" id="auto-all-excel">Download all hulls (Excel)</button></div>`;
     // Re-render only on change, so buttons are not replaced under the pointer during polling.
     if(box.dataset.html===html)return;
     const historyOpen=box.querySelector<HTMLDetailsElement>('details.auto-history')?.open;
@@ -337,7 +359,7 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
     box.querySelectorAll<HTMLElement>('[data-view]').forEach(b=>b.addEventListener('click',()=>{streamJob=null;void loadStudy(b.dataset.view!);}));
     box.querySelectorAll<HTMLElement>('[data-cancel]').forEach(b=>b.addEventListener('click',async()=>{(b as HTMLButtonElement).disabled=true;try{await api(`/api/cfd/studies/${encodeURIComponent(b.dataset.cancel!)}/cancel`,{method:'POST',body:'{}'});await refreshQueue();if(study&&String(study.id)===b.dataset.cancel)void loadStudy(b.dataset.cancel!);}catch(e){error((e as Error).message);}}));
     dialog.querySelector('#auto-stop-all')?.addEventListener('click',async()=>{if(!window.confirm('Stop the running test and remove every queued hull?'))return;try{await api('/api/cfd/queue/cancel',{method:'POST',body:'{}'});await refreshQueue();if(study)void loadStudy(String(study.id));}catch(e){error((e as Error).message);}});
-    get('auto-all-excel').addEventListener('click',()=>{const rows=studies.filter(s=>list(s.conditions).length);download(buildXlsx([allStudiesSheet(rows),...(study?automaticStudySheets(study).slice(1,3):[])]),`hull-tests-all-${new Date().toISOString().slice(0,10)}.xlsx`,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');});
+    get('auto-all-excel').addEventListener('click',()=>{const rows=studies.filter(s=>list(s.conditions).length);download(buildXlsx([rankingSheet(rows),allStudiesSheet(rows),...(study?automaticStudySheets(study).slice(1,3):[])]),`hull-tests-all-${new Date().toISOString().slice(0,10)}.xlsx`,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');});
   }
   /** Polls the queue while anything runs, even with the dialog closed, for the tab title and notifications. */
   async function refreshQueue(){
@@ -363,9 +385,12 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
     try{
       const status=await api('/api/cfd/status');
       if(!alive||!dialog.open)return;
-      available=status.available===true;
+      available=status.available===true;backend=status.backend==='cluster'?'cluster':'local';clusterHost=String(status.host??'');
       maxCores=Math.max(1,finite(status.maxCores)??1);defaultCores=Math.min(maxCores,Math.max(1,finite(status.defaultCores)??maxCores));renderPicker();
-      get('auto-service').textContent=available?`OpenFOAM ready · runs locally in Docker · ${maxCores} CPU cores available`:String(status.message??'Start Docker and install the pinned OpenFOAM image.');
+      dialog.querySelectorAll<HTMLInputElement>('input[name="auto-backend"]').forEach(i=>{i.checked=i.value===backend;});
+      get('auto-cores-label').hidden=backend==='cluster';
+      get('auto-run-note').textContent=backend==='cluster'?'On the cluster every test (and every Full-mode check) runs at the same time on its own compute node, and several hulls can run side by side. Results come back automatically. You can close this window; keep this app running until the tests finish.':'Tests run one after another, never all at once. You can keep adding hulls to the queue, close this window, stop at any time and export partial results. Your browser can notify you when tests finish.';
+      get('auto-service').textContent=available?(backend==='cluster'?`OpenFOAM ready · runs on ${clusterHost} · ${maxCores} cores per test, all tests in parallel`:`OpenFOAM ready · runs locally in Docker · ${maxCores} CPU cores available`):String(status.message??'Start Docker and install the pinned OpenFOAM image.');
       get('auto-service').className=`cfd-service ${available?'ready':'offline'}`;
       get('auto-local').hidden=available;
       refreshEstimate();
@@ -392,7 +417,7 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
   /** Queue the same ticked tests for every loaded hull (competition entries), one study per hull. */
   async function runAll(){
     const all=options.getAll?.()??[];if(submitting||!available||all.length<2)return;
-    if(!window.confirm(`Queue ${runnable().length} test${runnable().length===1?'':'s'} (${choice.speed==='quick'?'Quick':'Full'}) for each of ${all.length} hulls? They run one after another.`))return;
+    if(!window.confirm(`Queue ${runnable().length} test${runnable().length===1?'':'s'} (${choice.speed==='quick'?'Quick':'Full'}) for each of ${all.length} hulls? ${backend==='cluster'?'They run side by side on the cluster.':'They run one after another.'}`))return;
     error('');submitting=true;setActions();askNotify();
     const failures:string[]=[];
     for(const sel of all){
@@ -404,18 +429,80 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
     if(failures.length)error(`Not queued: ${failures.join(' · ')}`);
     setActions();
   }
-  function close(){clearTimeout(timer);disconnect();dialog.close();}
+  /* ---------- Cluster (Slurm over SSH) settings ---------- */
+  const CLUSTER_FIELDS=['host','user','account','partition','remoteDir','cores','hours','memoryGb','concurrentStudies','sshKey'] as const;
+  let installTimer=0;
+  function clusterStatusText(data:RecordValue){
+    const check=record(data.check),install=record(data.install),problems=Array.isArray(data.problems)?data.problems.map(String):[];
+    const parts:string[]=[];
+    if(problems.length)parts.push(problems.join(' '));
+    const cert=record(data.certificate);
+    if(cert.required===true||cert.exists===true)parts.push(cert.valid===true?`✓ ${String(cert.message??'')}`:`⚠ ${String(cert.message??'SSH certificate missing.')}`);
+    if(data.check===null||data.check===undefined)parts.push('Not tested yet: press Test connection.');
+    else if(check.ok!==true)parts.push(`Connection failed: ${String(check.error??'unknown error')}`);
+    else{
+      parts.push(`Connected to ${String(check.host||'the cluster')}.`);
+      if(check.slurm!==true)parts.push('Slurm (sbatch) was not found there.');
+      if(check.apptainer!==true)parts.push('Apptainer was not found there.');
+      if(check.remoteDirOk!==true)parts.push('The cluster folder could not be created; check the path and project.');
+      parts.push(check.solverInstalled===true?'Solver installed ✓':'Solver not installed yet: press Install solver.');
+      const parts2=Array.isArray(check.partitions)?check.partitions.map(String):[];if(parts2.length)parts.push(`Partitions (name, time limit, cores per node): ${parts2.slice(0,8).join(' · ')}`);
+    }
+    if(install.state==='running')parts.push(String(install.message??'Installing…'));
+    else if(install.state==='failed')parts.push(`Install failed: ${String(install.message??'')}`);
+    else if(install.state==='done')parts.push(String(install.message??''));
+    return parts.join(' ');
+  }
+  function showCluster(data:RecordValue){
+    const form=dialog.querySelector<HTMLFormElement>('#auto-cluster');if(!form)return;
+    const config=record(data.config);
+    if(data.config)for(const k of CLUSTER_FIELDS){const input=form.elements.namedItem(k) as HTMLInputElement|null;if(input&&document.activeElement!==input)input.value=config[k]===undefined||config[k]===null?'':String(config[k]);}
+    get('auto-cluster-status').textContent=clusterStatusText(data);
+    clearTimeout(installTimer);
+    if(record(data.install).state==='running')installTimer=window.setTimeout(()=>void clusterCall('/api/cfd/cluster'),5000);
+  }
+  async function clusterCall(path:string,init?:RequestInit){
+    try{const data=await api(path,init);if(!alive)return null;showCluster(data);return data;}
+    catch(e){get('auto-cluster-status').textContent=(e as Error).message;return null;}
+  }
+  function clusterForm():Record<string,unknown>{
+    const form=get<HTMLFormElement>('auto-cluster'),out:Record<string,unknown>={};
+    for(const k of CLUSTER_FIELDS){const v=(form.elements.namedItem(k) as HTMLInputElement).value.trim();out[k]=['cores','hours','memoryGb','concurrentStudies'].includes(k)?Number(v||0):v;}
+    return out;
+  }
+  async function setBackend(next:'local'|'cluster'){
+    const data=await clusterCall('/api/cfd/cluster',{method:'POST',body:JSON.stringify({enabled:next==='cluster'})});
+    if(next==='cluster'&&data&&(Array.isArray(data.problems)&&data.problems.length||record(data.check).solverInstalled!==true)){get<HTMLFormElement>('auto-cluster').hidden=false;get('auto-cluster-toggle').setAttribute('aria-expanded','true');}
+    estimateKey='';estimate=null;await refreshStatus();
+  }
+  function bindCluster(){
+    const form=get<HTMLFormElement>('auto-cluster'),toggle=get('auto-cluster-toggle');
+    toggle.addEventListener('click',()=>{form.hidden=!form.hidden;toggle.setAttribute('aria-expanded',String(!form.hidden));if(!form.hidden)void clusterCall('/api/cfd/cluster');});
+    dialog.querySelectorAll<HTMLInputElement>('input[name="auto-backend"]').forEach(i=>i.addEventListener('change',()=>{if(i.checked)void setBackend(i.value==='cluster'?'cluster':'local');}));
+    form.addEventListener('submit',e=>{e.preventDefault();void clusterCall('/api/cfd/cluster',{method:'POST',body:JSON.stringify(clusterForm())}).then(()=>{estimateKey='';void refreshStatus();});});
+    get('auto-cluster-check').addEventListener('click',async()=>{
+      get('auto-cluster-status').textContent='Saving and connecting…';
+      await clusterCall('/api/cfd/cluster',{method:'POST',body:JSON.stringify(clusterForm())});
+      await clusterCall('/api/cfd/cluster/check',{method:'POST'});estimateKey='';void refreshStatus();
+    });
+    get('auto-cluster-install').addEventListener('click',async()=>{
+      get('auto-cluster-status').textContent='Starting the solver download on the cluster…';
+      await clusterCall('/api/cfd/cluster',{method:'POST',body:JSON.stringify(clusterForm())});
+      await clusterCall('/api/cfd/cluster/install',{method:'POST'});void clusterCall('/api/cfd/cluster');
+    });
+  }
+  function close(){clearTimeout(timer);clearTimeout(installTimer);disconnect();dialog.close();}
   function open(){
     if(!alive)return;
     const next=options.getSelection(),sameGeometry=selected&&next&&selected.id===next.id&&selected.trianglesMm.length===next.trianglesMm.length&&selected.trianglesMm.every((v,i)=>v===next.trianglesMm[i]);
     selected=next?{...next,trianglesMm:next.trianglesMm.slice()}:null;
     if(study&&terminal(study.status)&&!sameGeometry)study=null;
-    dialog.innerHTML=`<div class="cfd-title"><div><small>AUTOMATIC LOCAL CFD</small><h2>Test your hull</h2></div><button type="button" class="btn small" id="auto-close" aria-label="Close automatic tests">Close</button></div><div class="cfd-content"><div id="auto-service" class="cfd-service">Checking OpenFOAM…</div><p class="auto-selection">${selected?`<b>${esc(selected.name)}</b><span>${selected.sizeMm.map(n=>display(n,1)).join(' × ')} mm · your oriented STL</span>`:'Select an STL hull in the workbench first.'}</p><div class="auto-protocol"><div><strong>3 loads</strong><span>150 · 250 · 350 g total</span></div><div><strong>3 waves + calm</strong><span>Waves scaled to hull length</span></div><div><strong>0.30 m/s</strong><span>Calm towing · fresh water</span></div></div><p class="cfd-note">Geometry, CAD CG and inertia, wall-resolution length, waves and solver settings are selected automatically. The same programme runs for every design.</p><p class="auto-distribution">The test loads follow a uniform CAD mass distribution. Infill, equipment and real cargo positions cannot be recovered from an STL; use advanced settings when those measurements are available.</p><fieldset class="auto-pick" id="auto-pick"><legend>Choose what to run</legend><div class="auto-speed"><label><input type="radio" name="auto-speed" value="quick"><b>Quick</b><span>1 solve per test · shorter run · uses all chosen CPU cores · rough numbers</span></label><label><input type="radio" name="auto-speed" value="full"><b>Full</b><span>5 solves per test · mesh, time-step and domain checks · many times slower</span></label></div><div class="auto-table-wrap"><table class="auto-grid"><thead><tr><th scope="col">Load</th>${AUTO_TESTS.map(t=>`<th scope="col"><button type="button" class="auto-link" data-pick="test:${t.id}" title="Select ${t.label} for all loads">${t.label}</button></th>`).join('')}</tr></thead><tbody>${AUTO_LOADS.map(g=>`<tr><th scope="row"><button type="button" class="auto-link" data-pick="load:${g}" title="Select every test at ${g} g">${g} g</button></th>${AUTO_TESTS.map(t=>`<td><label class="auto-check"><input type="checkbox" data-cond="${g}g-${t.id}" aria-label="${g} g · ${t.label}"></label><small class="auto-est" data-est="${g}g-${t.id}"></small></td>`).join('')}</tr>`).join('')}</tbody></table></div><div class="auto-pick-tools"><button type="button" class="btn small" data-pick="calm">Calm tows only</button><button type="button" class="btn small" data-pick="all">All ${AUTO_CONDITION_IDS.length}</button><button type="button" class="btn small" data-pick="none">Clear</button><label class="auto-cores">CPU cores per solve <select id="auto-cores"><option>1</option></select></label></div><p class="cfd-note" id="auto-plan-note"></p></fieldset><div class="auto-main-actions"><button type="button" class="btn primary" id="auto-run" disabled>Run tests</button><button type="button" class="btn small" id="auto-batch" hidden>Queue for all hulls</button><button type="button" class="btn small" id="auto-advanced">Advanced settings</button></div><p class="cfd-note">Tests run one after another, never all at once. You can keep adding hulls to the queue, close this window, stop at any time and export partial results. Your browser can notify you when tests finish.</p><div id="auto-local" hidden><p class="cfd-note">OpenFOAM needs the local app and Docker. <a href="/download.html">Setup guide</a> · <a href="/downloads/Hull-Test-Bench-OpenFOAM.zip" download>Download updated app</a></p></div><p id="auto-error" class="cfd-error" role="alert"></p><section id="auto-live" class="auto-live" hidden aria-label="Live solver output"><div class="auto-live-head"><div><b id="auto-live-title">Live solver log</b><span id="auto-live-stage"></span></div><label class="auto-follow"><input type="checkbox" id="auto-follow" checked> Auto-scroll</label></div><progress id="auto-live-progress" max="100" aria-label="Current solve progress"></progress><dl class="auto-live-stats" id="auto-live-stats"></dl><pre id="auto-live-log" class="auto-live-log" tabindex="0" aria-label="Live solver log"></pre></section><section id="auto-study" aria-label="Automatic test progress"></section><section id="auto-queue" class="auto-queue" aria-label="Test queue and history"></section></div>`;
+    dialog.innerHTML=`<div class="cfd-title"><div><small>AUTOMATIC LOCAL CFD</small><h2>Test your hull</h2></div><button type="button" class="btn small" id="auto-close" aria-label="Close automatic tests">Close</button></div><div class="cfd-content"><div id="auto-service" class="cfd-service">Checking OpenFOAM…</div><div class="auto-backend" role="radiogroup" aria-label="Where to run"><span>Run on</span><label><input type="radio" name="auto-backend" value="local"> This computer</label><label><input type="radio" name="auto-backend" value="cluster"> Cluster (CSC Roihu)</label><button type="button" class="btn small" id="auto-cluster-toggle" aria-expanded="false">Cluster settings</button></div><form id="auto-cluster" class="auto-cluster" hidden autocomplete="off"><p class="cfd-note"><b>One-time setup.</b> 1) Create an SSH key on this computer: <code>ssh-keygen -t ed25519</code> (press Enter for no passphrase). 2) Add the contents of <code>~/.ssh/id_ed25519.pub</code> to your account in MyCSC (my.csc.fi → SSH public keys) and wait a few minutes. 3) Fill in your CSC username and project, press <b>Save</b>, <b>Test connection</b>, then <b>Install solver</b> (once, 5–20 min).</p><div class="auto-cluster-grid"><label>Host<input name="host" placeholder="roihu.csc.fi"></label><label>CSC username<input name="user" placeholder="username"></label><label>Project (billing)<input name="account" placeholder="project_2001234"></label><label>Partition<input name="partition" placeholder="small"></label><label>Folder on the cluster<input name="remoteDir" placeholder="/scratch/project_2001234/hulltests"></label><label>Cores per test<input name="cores" type="number" min="1" max="512"></label><label>Max hours per run<input name="hours" type="number" min="1" max="336"></label><label>Memory per run, GB (0 = default)<input name="memoryGb" type="number" min="0" max="4096"></label><label>Hulls at once<input name="concurrentStudies" type="number" min="1" max="200"></label><label>SSH key file (optional)<input name="sshKey" placeholder="C:\Users\you\.ssh\id_ed25519"></label></div><div class="auto-cluster-actions"><button type="submit" class="btn small">Save</button><button type="button" class="btn small" id="auto-cluster-check">Test connection</button><button type="button" class="btn small" id="auto-cluster-install">Install solver</button></div><p class="cfd-note" id="auto-cluster-status" role="status"></p></form><p class="auto-selection">${selected?`<b>${esc(selected.name)}</b><span>${selected.sizeMm.map(n=>display(n,1)).join(' × ')} mm · your oriented STL</span>`:'Select an STL hull in the workbench first.'}</p><div class="auto-protocol"><div><strong>3 loads</strong><span>150 · 250 · 350 g total</span></div><div><strong>2 waves + calm</strong><span>Medium and high, scaled to hull length</span></div><div><strong>0.30 m/s</strong><span>Calm towing · fresh water</span></div></div><p class="cfd-note">Geometry, CAD CG and inertia, wall-resolution length, waves and solver settings are selected automatically. The same programme runs for every design.</p><p class="auto-distribution">The test loads follow a uniform CAD mass distribution. Infill, equipment and real cargo positions cannot be recovered from an STL; use advanced settings when those measurements are available.</p><fieldset class="auto-pick" id="auto-pick"><legend>Choose what to run</legend><div class="auto-speed"><label><input type="radio" name="auto-speed" value="quick"><b>Quick</b><span>1 solve per test · shorter run · uses all chosen CPU cores · rough numbers</span></label><label><input type="radio" name="auto-speed" value="full"><b>Full</b><span>5 solves per test · mesh, time-step and domain checks · many times slower</span></label></div><div class="auto-table-wrap"><table class="auto-grid"><thead><tr><th scope="col">Load</th>${AUTO_TESTS.map(t=>`<th scope="col"><button type="button" class="auto-link" data-pick="test:${t.id}" title="Select ${t.label} for all loads">${t.label}</button></th>`).join('')}</tr></thead><tbody>${AUTO_LOADS.map(g=>`<tr><th scope="row"><button type="button" class="auto-link" data-pick="load:${g}" title="Select every test at ${g} g">${g} g</button></th>${AUTO_TESTS.map(t=>`<td><label class="auto-check"><input type="checkbox" data-cond="${g}g-${t.id}" aria-label="${g} g · ${t.label}"></label><small class="auto-est" data-est="${g}g-${t.id}"></small></td>`).join('')}</tr>`).join('')}</tbody></table></div><div class="auto-pick-tools"><button type="button" class="btn small" data-pick="calm">Calm tows only</button><button type="button" class="btn small" data-pick="all">All ${AUTO_CONDITION_IDS.length}</button><button type="button" class="btn small" data-pick="none">Clear</button><label class="auto-cores" id="auto-cores-label">CPU cores per solve <select id="auto-cores"><option>1</option></select></label></div><p class="cfd-note" id="auto-plan-note"></p></fieldset><div class="auto-main-actions"><button type="button" class="btn primary" id="auto-run" disabled>Run tests</button><button type="button" class="btn small" id="auto-batch" hidden>Queue for all hulls</button><button type="button" class="btn small" id="auto-advanced">Advanced settings</button></div><p class="cfd-note" id="auto-run-note">Tests run one after another, never all at once. You can keep adding hulls to the queue, close this window, stop at any time and export partial results. Your browser can notify you when tests finish.</p><div id="auto-local" hidden><p class="cfd-note">OpenFOAM needs the local app and Docker. <a href="/download.html">Setup guide</a> · <a href="/downloads/Hull-Test-Bench-OpenFOAM.zip" download>Download updated app</a></p></div><p id="auto-error" class="cfd-error" role="alert"></p><section id="auto-live" class="auto-live" hidden aria-label="Live solver output"><div class="auto-live-head"><div><b id="auto-live-title">Live solver log</b><span id="auto-live-stage"></span></div><label class="auto-follow"><input type="checkbox" id="auto-follow" checked> Auto-scroll</label></div><progress id="auto-live-progress" max="100" aria-label="Current solve progress"></progress><dl class="auto-live-stats" id="auto-live-stats"></dl><pre id="auto-live-log" class="auto-live-log" tabindex="0" aria-label="Live solver log"></pre></section><section id="auto-study" aria-label="Automatic test progress"></section><section id="auto-queue" class="auto-queue" aria-label="Test queue and history"></section></div>`;
     get('auto-close').addEventListener('click',close);
     get('auto-run').addEventListener('click',()=>void run());
     get('auto-batch').addEventListener('click',()=>void runAll());
     get('auto-advanced').addEventListener('click',()=>{close();options.openAdvanced();});
-    bindPicker();estimateKey='';estimate=null;renderPicker();streamJob=null;
+    bindPicker();bindCluster();estimateKey='';estimate=null;renderPicker();streamJob=null;
     if(!dialog.open)dialog.showModal();renderStudy();void refreshStatus();
   }
   button?.addEventListener('click',open);

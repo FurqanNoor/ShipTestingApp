@@ -1,5 +1,5 @@
 /** Native OpenCFD v2312 regular waves. Advancing-wave/current cases are deliberately unsupported. */
-import { type CfdCasePackage, type CfdManifest, type Vec3, foamHeader, foamNumber, foamVector } from './case';
+import { type CfdCasePackage, type CfdManifest, type Vec3, CALM_REFERENCE_FUNCTION, foamHeader, foamNumber, foamVector } from './case';
 import {diagonalizeInertia,type Matrix3} from './massProperties';
 
 export interface WaveCaseSettings {
@@ -380,7 +380,9 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
     files['system/fvOptions']+=`\nwavemaker\n{\n    type acousticDampingSource;\n    selectionMode all;\n    centre ${foamVector(centre)};\n    radius1 ${n(far)};\n    radius2 ${n(far+genLength)};\n    frequency ${n(GEN_STRENGTH*omega/w)};\n    w ${w};\n    URef UWave;\n}\n`;
     files['0/UWave']=foamHeader('UWave','volVectorField','0')+'dimensions [0 1 -1 0 0 0 0];\ninternalField uniform (0 0 0);\nboundaryField\n{\n    ".*" { type calculated; value uniform (0 0 0); }\n}\n';
   }
-  let control=textFile(base,'system/controlDict');
+  // The calm outlet absorber (and its reference velocity) does not belong in a wave tank; its own sponge replaces it.
+  let control=textFile(base,'system/controlDict').replace(CALM_REFERENCE_FUNCTION,'');
+  delete files['0/UTow'];
   control=entry(control,'endTime',n(duration));control=entry(control,'deltaT',n(dt));control=entry(control,'maxDeltaT',n(maxDt));
   // Quick runs extend a short base case; keep ~20 field writes rather than hundreds.
   const writeInterval=quick?duration/20:b.numerics.writeIntervalS;
@@ -401,7 +403,11 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
   control=appendFunction(control,`    waveGauges\n    {\n        type interfaceHeight; libs ("libfieldFunctionObjects.so");\n        alpha alpha.water;\n        locations (${v(probeA)} ${v(probeB)});\n        direction (0 0 1);\n        writeControl timeStep; writeInterval 1;\n    }`);
   if(moving){
     const L=b.geometry.maxM[0]-b.geometry.minM[0];
-    files['constant/dynamicMeshDict']=foamHeader('dynamicMeshDict','dictionary','constant')+`dynamicFvMesh dynamicMotionSolverFvMesh;\nmotionSolverLibs ("libsixDoFRigidBodyMotion.so");\nmotionSolver sixDoFRigidBodyMotion;\nsixDoFRigidBodyMotionCoeffs\n{\n    patches (hull);\n    innerDistance ${n(L*.05)};\n    outerDistance ${n(L*.75)};\n    centreOfMass ${v(cg)};\n    orientation (${inertiaOrientation.flat().map(n).join(' ')});\n    initialOrientation (${inertiaOrientation.flat().map(n).join(' ')});\n    mass ${n(b.load.massKg)};\n    momentOfInertia ${v(solverInertia)};\n    rho rho;\n    report yes;\n    accelerationRelaxation 0.7;\n    accelerationDamping 1;\n    solver { type Newmark; }\n    constraints\n    {\n        heaveOnly\n        {\n            sixDoFRigidBodyMotionConstraint line;\n            centreOfRotation ${v(cg)};\n            direction (0 0 1);\n        }\n        rollOnly\n        {\n            sixDoFRigidBodyMotionConstraint axis;\n            axis (1 0 0);\n        }\n    }\n}\n`;
+    // The morphing zone must end inside the tank. With outerDistance 0.75 L it crossed the end walls (0.5 L from bow and
+    // stern): rolling then moved the wall cells, pumping ~23 m/s of spurious air just above the surface there, which set a
+    // 0.25 ms Courant-limited step (verification/wave-morph-zone). Keep it within 90% of the nearest end wall or wave gap.
+    const outerDistance=Math.min(.75*L,.9*BEAM_X_MARGIN*L,.9*gapY);
+    files['constant/dynamicMeshDict']=foamHeader('dynamicMeshDict','dictionary','constant')+`dynamicFvMesh dynamicMotionSolverFvMesh;\nmotionSolverLibs ("libsixDoFRigidBodyMotion.so");\nmotionSolver sixDoFRigidBodyMotion;\nsixDoFRigidBodyMotionCoeffs\n{\n    patches (hull);\n    innerDistance ${n(L*.05)};\n    outerDistance ${n(outerDistance)};\n    centreOfMass ${v(cg)};\n    orientation (${inertiaOrientation.flat().map(n).join(' ')});\n    initialOrientation (${inertiaOrientation.flat().map(n).join(' ')});\n    mass ${n(b.load.massKg)};\n    momentOfInertia ${v(solverInertia)};\n    rho rho;\n    report yes;\n    accelerationRelaxation 0.7;\n    accelerationDamping 1;\n    solver { type Newmark; }\n    constraints\n    {\n        heaveOnly\n        {\n            sixDoFRigidBodyMotionConstraint line;\n            centreOfRotation ${v(cg)};\n            direction (0 0 1);\n        }\n        rollOnly\n        {\n            sixDoFRigidBodyMotionConstraint axis;\n            axis (1 0 0);\n        }\n    }\n}\n`;
     const patches=['inlet','outlet','port','starboard','bottom','atmosphere','hull'];
     files['0/pointDisplacement']=foamHeader('pointDisplacement','pointVectorField','0')+`dimensions [0 1 0 0 0 0 0];\ninternalField uniform (0 0 0);\nboundaryField\n{\n${patches.map(p=>`    ${p} { type ${p==='hull'?'calculated':'fixedValue'}; value uniform (0 0 0); }`).join('\n')}\n}\n`;
     control=appendFunction(control,'    rigidBodyState\n    {\n        type sixDoFRigidBodyState; libs ("libsixDoFRigidBodyState.so");\n        angleFormat radians;\n        writeControl timeStep; writeInterval 1;\n    }');

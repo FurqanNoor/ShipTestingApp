@@ -36,6 +36,8 @@ npm test         # physics checks
 
 `npx tsx scripts/make-samples.ts samples` writes a few sample STL files.
 
+**OpenFOAM tests:** `npm run cfd` starts the app with the local solver (Docker). To run every test in parallel on a supercomputer such as CSC Roihu, see [CLUSTER.md](CLUSTER.md).
+
 ## Using it
 
 1. **Add STL** (or drop files on the tank). Several files can be added at once.

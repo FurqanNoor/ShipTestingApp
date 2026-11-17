@@ -22,7 +22,7 @@ describe('Allrun streams live output and can run in parallel',()=>{
     expect(run).toContain('NPROCS="${HULL_NPROCS:-1}"');
     expect(run).toContain('method scotch;');
     expect(run).toContain('run_stage decomposePar -force');
-    expect(run).toMatch(/mpirun --oversubscribe -np "\$NPROCS" .*interFoam -parallel 2>&1 \| tee log\.interFoam/);
+    expect(run).toMatch(/mpirun --oversubscribe --bind-to none -np "\$NPROCS" .*interFoam -parallel 2>&1 \| tee log\.interFoam/);
     expect(run.indexOf('run_stage setFields')).toBeLessThan(run.indexOf('decomposePar'));
     expect(run).toContain('    run_stage interFoam\n');
     expect(run).not.toMatch(/\brm\s/);

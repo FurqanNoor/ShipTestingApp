@@ -1,0 +1,130 @@
+/**
+ * Hackathon ranking from automatic OpenFOAM studies: one row per hull, drag + roll + stability combined.
+ *
+ * Fairness rules:
+ * - Only the latest study of each hull counts.
+ * - Hulls are ranked together only when their studies used identical settings: protocol version (solver setup),
+ *   Quick/Full, backend and cores per solve. The most common settings form the reference; other hulls are listed as
+ *   "different settings" and must be re-run.
+ * - Every test in the reference programme must have finished. A run that stopped for numerical reasons makes the hull
+ *   "incomplete" (re-run it); sinking or capsizing is a design result and counts as a failure.
+ * - A hull with failures ranks below every hull without failures, whatever its score.
+ *
+ * Scores (as in the preview leaderboard): the best hull in each category scores 100 and the rest in proportion.
+ * Drag: mean calm towing drag over the loads (lower is better). Roll: mean maximum roll over the wave tests, 90 degrees for
+ * a capsize (lower is better). Stability: mean initial metacentric height GM over the loads (higher is better).
+ * Total = average of the three.
+ */
+
+type R = Record<string, unknown>;
+const rec = (v: unknown): R => (v && typeof v === 'object' && !Array.isArray(v) ? (v as R) : {});
+const arr = (v: unknown): R[] => (Array.isArray(v) ? v.map(rec) : []);
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const str = (v: unknown): string => (typeof v === 'string' ? v : v === undefined || v === null ? '' : String(v));
+
+/** Bump when a change to the solver setup makes new results incomparable with old ones. */
+export const PROTOCOL_VERSION = '2026-11-18';
+
+export interface LeaderboardSettings { protocol: string; speed: string; backend: string; cores: number | null }
+export interface LeaderboardRow {
+  name: string; studyId: string; createdAt: string; settings: LeaderboardSettings; settingsLabel: string;
+  status: 'ranked' | 'incomplete' | 'different-settings';
+  place: number | null; dragMN: number | null; rollDeg: number | null; gmMm: number | null; failures: number;
+  scoreDrag: number | null; scoreRoll: number | null; scoreStability: number | null; total: number | null; note: string;
+}
+
+const TERMINAL = new Set(['completed', 'failed', 'blocked', 'cancelled', 'interrupted']);
+const DESIGN_FAILURES = new Set(['sinks', 'stability-failure']);
+
+export function settingsOf(study: unknown): LeaderboardSettings {
+  const o = rec(rec(study).options);
+  return { protocol: str(o.protocolVersion) || 'before 2026-11-18', speed: str(o.speed) || 'full', backend: str(o.backend) || 'local', cores: num(o.cores) };
+}
+export const settingsKey = (s: LeaderboardSettings) => `${s.protocol}|${s.speed}|${s.backend}|${s.cores ?? ''}`;
+export const settingsLabel = (s: LeaderboardSettings) =>
+  `${s.speed === 'quick' ? 'Quick' : 'Full'} · ${s.backend === 'cluster' ? 'cluster' : 'this computer'} · ${s.cores ?? '?'} cores · setup ${s.protocol}`;
+
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+
+export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; reference: LeaderboardSettings | null; conditionIds: string[] } {
+  // Studies per hull name (a re-run of unfinished tests is a separate study of the same hull).
+  const byHull = new Map<string, R[]>();
+  for (const s of studies.map(rec)) {
+    if (!arr(s.conditions).length) continue;
+    const name = str(s.name) || 'Hull';
+    byHull.set(name, [...(byHull.get(name) ?? []), s]);
+  }
+  // Reference settings: those used by the most hulls (ties: the newest protocol).
+  const counts = new Map<string, { n: number; s: LeaderboardSettings }>();
+  for (const list of byHull.values()) {
+    for (const k of new Set(list.map(s => settingsKey(settingsOf(s))))) {
+      const st = settingsOf(list.find(s => settingsKey(settingsOf(s)) === k));
+      counts.set(k, { n: (counts.get(k)?.n ?? 0) + 1, s: st });
+    }
+  }
+  const reference = [...counts.values()].sort((a, b) => b.n - a.n || b.s.protocol.localeCompare(a.s.protocol))[0]?.s ?? null;
+  const refKey = reference ? settingsKey(reference) : '';
+  // Each hull's tests at the reference settings, newest finished result per test (any finished entry beats a running one).
+  const merged = new Map<string, { latest: R; conditions: Map<string, R> }>();
+  for (const [name, list] of byHull) {
+    const same = list.filter(s => settingsKey(settingsOf(s)) === refKey).sort((a, b) => str(a.createdAt).localeCompare(str(b.createdAt)));
+    if (!same.length) continue;
+    const conditions = new Map<string, R>();
+    for (const s of same) for (const c of arr(s.conditions)) {
+      const id = str(c.id), prev = conditions.get(id);
+      if (!prev || TERMINAL.has(str(c.status)) || !TERMINAL.has(str(prev.status))) conditions.set(id, c);
+    }
+    merged.set(name, { latest: same[same.length - 1], conditions });
+  }
+  // Reference programme: the largest set of tests that most hulls ran.
+  const programmes = new Map<string, number>();
+  for (const { conditions } of merged.values()) { const k = [...conditions.keys()].sort().join(','); programmes.set(k, (programmes.get(k) ?? 0) + 1); }
+  const programme = [...programmes.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0] ?? '';
+  const conditionIds = programme ? programme.split(',') : [];
+
+  const rows: LeaderboardRow[] = [...byHull.entries()].map(([name, list]) => {
+    const m = merged.get(name);
+    const s = m?.latest ?? [...list].sort((a, b) => str(b.createdAt).localeCompare(str(a.createdAt)))[0];
+    const settings = settingsOf(s);
+    const base = { name, studyId: str(s.id), createdAt: str(s.createdAt), settings, settingsLabel: settingsLabel(settings),
+      place: null, dragMN: null, rollDeg: null, gmMm: null, failures: 0, scoreDrag: null, scoreRoll: null, scoreStability: null, total: null };
+    if (!m)
+      return { ...base, status: 'different-settings' as const, note: `Tested with different settings (${settingsLabel(settings)}). Re-run with ${reference ? settingsLabel(reference) : 'the reference settings'}.` };
+    const byId = m.conditions;
+    const missing = conditionIds.filter(id => !byId.has(id));
+    if (missing.length) return { ...base, status: 'incomplete' as const, note: `Not tested: ${missing.join(', ')}. Run the same tests as the other hulls.` };
+    const drag: number[] = [], roll: number[] = [], gm: number[] = [], rerun: string[] = [];
+    let failures = 0;
+    for (const id of conditionIds) {
+      const c = byId.get(id)!, m = rec(rec(c.result).metrics), verdict = str(rec(c.hint).verdict), status = str(c.status);
+      if (!TERMINAL.has(status)) { rerun.push(`${id} still running`); continue; }
+      if (DESIGN_FAILURES.has(verdict)) { failures++; if (str(c.mode) !== 'calm') roll.push(90); continue; }
+      if (status !== 'completed') { rerun.push(`${id} ${status}`); continue; }
+      const g = num(m.initialGmM);
+      if (g !== null) gm.push(g * 1000);
+      if (str(c.mode) === 'calm') { const d = num(m.meanDragN); if (d === null) rerun.push(`${id} has no drag`); else drag.push(d * 1000); }
+      else { const r = num(m.maxRollDeg); if (r === null) rerun.push(`${id} has no roll`); else roll.push(Math.abs(r)); }
+    }
+    if (rerun.length) return { ...base, failures, status: 'incomplete' as const, note: `Re-run needed: ${rerun.join('; ')}.` };
+    return { ...base, failures, status: 'ranked' as const, dragMN: mean(drag), rollDeg: mean(roll), gmMm: mean(gm),
+      note: failures ? `${failures} test${failures === 1 ? '' : 's'} failed (sinks or capsizes); ranked below hulls without failures.` : '' };
+  });
+
+  const ranked = rows.filter(r => r.status === 'ranked');
+  const best = (pick: (r: LeaderboardRow) => number | null, lower: boolean) => {
+    const xs = ranked.map(pick).filter((x): x is number => x !== null && x > 0);
+    return xs.length ? (lower ? Math.min(...xs) : Math.max(...xs)) : null;
+  };
+  const bDrag = best(r => r.dragMN, true), bRoll = best(r => r.rollDeg === null ? null : Math.max(r.rollDeg, .1), true), bGm = best(r => r.gmMm, false);
+  for (const r of ranked) {
+    r.scoreDrag = bDrag !== null && r.dragMN !== null && r.dragMN > 0 ? (100 * bDrag) / r.dragMN : null;
+    r.scoreRoll = bRoll !== null && r.rollDeg !== null ? (100 * bRoll) / Math.max(r.rollDeg, .1) : null;
+    r.scoreStability = bGm !== null && r.gmMm !== null ? Math.max(0, (100 * r.gmMm) / bGm) : null;
+    const parts = [r.scoreDrag, r.scoreRoll, r.scoreStability].filter((x): x is number => x !== null);
+    r.total = parts.length ? parts.reduce((a, b) => a + b, 0) / parts.length : null;
+  }
+  ranked.sort((a, b) => a.failures - b.failures || (b.total ?? -1) - (a.total ?? -1));
+  ranked.forEach((r, i) => { r.place = i + 1; });
+  const others = rows.filter(r => r.status !== 'ranked').sort((a, b) => a.name.localeCompare(b.name));
+  return { rows: [...ranked, ...others], reference, conditionIds };
+}

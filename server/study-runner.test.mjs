@@ -110,10 +110,10 @@ test('quick studies run one coarse solve per selected condition with quick fidel
   for(const c of done.conditions){assert.equal(c.status,'completed');assert.equal(c.result.quick,true);assert.equal(c.result.numericalSensitivityPassed,null);assert.equal(c.result.rankable,false);assert.equal(c.result.metrics.referenceMesh,'coarse');}
   const tris=[0,0,0,200,0,0,0,10,0];
   const q=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null,'quick');
-  assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.8);assert.ok(Math.abs(q.durationS-4)<1e-9);
+  assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.8);assert.ok(Math.abs(q.durationS-16*.2/.3)<1e-9);
   const full=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null);
-  // Full's coarse grid and numerics are Quick's, over a longer window (12 hull lengths).
-  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.004);assert.equal(full.maxCo,.8);assert.ok(Math.abs(full.durationS-8)<1e-9);
+  // Full's coarse grid and numerics are Quick's, over a longer window (16 hull lengths, the same as Quick: the drag is stationary after start-up).
+  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.004);assert.equal(full.maxCo,.8);assert.ok(Math.abs(full.durationS-16*.2/.3)<1e-9);
   const wave=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'fine',null);assert.equal(wave.mesh,'fine');assert.ok(Math.abs(wave.durationS-25*.45)<1e-9);assert.equal(wave.maxCo,1);
 });
 test('full remains the default speed and keeps all five phases',async()=>{

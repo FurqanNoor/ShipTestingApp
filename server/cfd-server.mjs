@@ -15,6 +15,7 @@ import {StudyRunner,numericalRequest,phasesFor} from './study-runner.mjs';
 import {predictRun,learn,remainingStudySeconds} from './estimator.mjs';
 import {explainFailure} from './failure-hints.mjs';
 import {repairHullTriangles} from './geometry-repair.mjs';
+import * as cluster from './cluster.mjs';
 
 const execute=promisify(execFile);
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -32,16 +33,27 @@ const totalMemoryGb=Math.floor(os.totalmem()/2**30);
 const memory=/^\d+[mg]$/i.test(process.env.CFD_MEMORY||'')?process.env.CFD_MEMORY:`${Math.max(3,Math.floor(totalMemoryGb*.7))}g`;
 const maxCores=Math.max(1,(os.availableParallelism?.()??os.cpus().length)||1);
 // Default: leave one core free for the desktop/browser on machines with more than two cores.
-const defaultCores=/^\d+$/.test(process.env.CFD_CPUS||'')?Math.min(maxCores,Math.max(1,Number(process.env.CFD_CPUS))):maxCores>2?maxCores-1:maxCores;
+const defaultCores=/^\d+$/.test(process.env.CFD_CPUS||'')?Math.min(maxCores,Math.max(1,Number(process.env.CFD_CPUS))):Math.max(1,Math.min(12,maxCores>2?Math.floor(maxCores/2):maxCores)); // measured: more ranks than physical cores is slower
 const STAGE_TEXT={surfaceCheck:'Checking hull surface',blockMesh:'Building background mesh',surfaceFeatureExtract:'Extracting hull edges',snappyHexMesh:'Meshing actual hull',checkMesh:'Checking mesh quality',meshDetailedDiagnostics:'Detailed mesh diagnostics',setFields:'Setting initial water level',decomposePar:'Splitting mesh across CPU cores',interFoam:'Solving free-surface flow'};
 const clampCores=v=>Number.isInteger(v)&&v>=1?Math.min(v,maxCores):defaultCores;
-const maxMs=Math.max(60_000,Math.min(Number(process.env.CFD_TIMEOUT_MS)||7_200_000,86_400_000));
+// Per-run safety stop. Full-mode fine wave runs take many hours on a laptop, so the default is generous (72 h);
+// set CFD_TIMEOUT_MS to change it (1 minute to 7 days).
+const maxMs=Math.max(60_000,Math.min(Number(process.env.CFD_TIMEOUT_MS)||72*3_600_000,7*86_400_000));
 const CALIBRATION=resolve(RUNS,'calibration.json');
 let calibration={};
+/* ---------- Optional Slurm cluster backend (e.g. CSC Roihu) ---------- */
+const CLUSTER_CONFIG=resolve(RUNS,'cluster.json'),CLUSTER_CALIBRATION=resolve(RUNS,'calibration-cluster.json');
+let clusterConfig=cluster.normaliseClusterConfig(),clusterCalibration={},clusterCheck=null,clusterInstall={state:'idle',message:''};
+const clusterJobs=new Map();let clusterPolling=false;
+const clusterReady=()=>clusterConfig.enabled&&!cluster.clusterProblems(clusterConfig).length;
+const POLL_MS=20_000;
+// A running cluster job with no new log output for this long has hung; it is cancelled and reported (CFD_STALL_MINUTES).
+const STALL_MS=Math.max(5,Number(process.env.CFD_STALL_MINUTES)||20)*60_000;
 const TERMINAL_STUDY=new Set(['completed','failed','cancelled','interrupted']);
+const TERMINAL_JOB=new Set(['completed','failed','cancelled']);
 const DONE_CONDITION=new Set(['completed','failed','blocked','cancelled','interrupted','skipped']);
 
-function publicJob(j){return {id:j.id,name:j.name,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logLines:j.lineCount??0,createdAt:j.createdAt,updatedAt:j.updatedAt,logTail:j.log.slice(-100),error:j.error||null,hint:j.hint??null,timing:j.timing??null,result:j.result||null,manifest:j.manifest,request:j.request,studyId:j.studyId??null,conditionId:j.conditionId??null,studyPhase:j.studyPhase??null};}
+function publicJob(j){return {backend:j.backend??'local',slurmId:j.slurmId??null,slurmState:j.slurmState??null,remoteDir:j.remoteDir??null,id:j.id,name:j.name,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logLines:j.lineCount??0,createdAt:j.createdAt,updatedAt:j.updatedAt,logTail:j.log.slice(-100),error:j.error||null,hint:j.hint??null,timing:j.timing??null,result:j.result||null,manifest:j.manifest,request:j.request,studyId:j.studyId??null,conditionId:j.conditionId??null,studyPhase:j.studyPhase??null};}
 function settleJob(j){const resolveJob=jobWaiters.get(j.id);if(resolveJob){jobWaiters.delete(j.id);resolveJob(publicJob(j));}}
 async function persistStudy(record){
   const previous=studyWrites.get(record.id)??Promise.resolve();
@@ -49,7 +61,9 @@ async function persistStudy(record){
   studyWrites.set(record.id,next);
   try{await next;}finally{if(studyWrites.get(record.id)===next)studyWrites.delete(record.id);}
 }
-const studyRunner=new StudyRunner({runCase:runStudyCase,cancelCase:async id=>{const j=jobs.get(id);if(j?.studyId)await cancel(j);},persist:persistStudy});
+// Locally one solve at a time; on the cluster every solve of several studies at once (each is its own Slurm job).
+const studyRunner=new StudyRunner({runCase:runStudyCase,cancelCase:async id=>{const j=jobs.get(id);if(j?.studyId)await cancel(j);},persist:persistStudy,
+  slots:()=>clusterReady()?{studies:clusterConfig.concurrentStudies,runs:64}:{studies:1,runs:1}});
 function publicStudy(record){
   if(!record)return null;
   const j=jobs.get(record.activeJobId);
@@ -97,17 +111,32 @@ async function prepareEstimates(geomKey,condition,speed){
   estimateCache.set(key,pending);if(estimateCache.size>3000)estimateCache.delete(estimateCache.keys().next().value);
   return pending;
 }
-const predictS=(manifest,cores)=>predictRun(manifest,{cores,calibration});
-function summariseCondition(condition,entry,cores){
+const predictS=(manifest,cores,backend='local')=>backend==='cluster'?predictRun(manifest,{cores:clusterConfig.cores,calibration:clusterCalibration,saturation:clusterConfig.cores}):predictRun(manifest,{cores,calibration});
+function summariseCondition(condition,entry,cores,backend='local'){
   const first=entry.runs[0],blocked=!!first?.error;
-  const runs=entry.runs.map(r=>r.error?{phase:r.phase,error:r.error,hint:r.hint}:{phase:r.phase,cells:predictS(r.manifest,cores).cells,predictedS:predictS(r.manifest,cores).totalS,simulatedS:r.manifest.numerics.durationS});
+  const runs=entry.runs.map(r=>r.error?{phase:r.phase,error:r.error,hint:r.hint}:{phase:r.phase,cells:predictS(r.manifest,cores,backend).cells,predictedS:predictS(r.manifest,cores,backend).totalS,simulatedS:r.manifest.numerics.durationS});
+  // On the cluster the first (coarse) solve runs, then all other phases at once: wall time is first + slowest other.
+  const ok=runs.filter(r=>Number.isFinite(r.predictedS)),parallelS=ok.length?ok[0].predictedS+Math.max(0,...ok.slice(1).map(r=>r.predictedS)):0;
   return {id:condition.id,label:condition.label,mode:condition.mode,blocked,error:blocked?first.error:null,hint:blocked?first.hint:null,
-    laterPhaseError:!blocked&&entry.runs.find(r=>r.error)?.error||null,predictedS:runs.reduce((t,r)=>t+(r.predictedS??0),0),runs};
+    laterPhaseError:!blocked&&entry.runs.find(r=>r.error)?.error||null,predictedS:backend==='cluster'?parallelS:runs.reduce((t,r)=>t+(r.predictedS??0),0),runs};
 }
 /** Remaining time for one study, from calibrated predictions plus the live solver rate of the active run. */
 function studyRemaining(record){
   if(TERMINAL_STUDY.has(record.status))return {remainingS:0};
   const pred=studyPredictions.get(record.id);if(!pred)return null;
+  if(record.options?.backend==='cluster'){
+    // Parallel: each condition needs its unfinished coarse run, then the slowest unfinished other phase.
+    let worst=0;
+    for(const c of record.conditions){
+      const entry=pred.get(c.id);if(!entry)return null;if(DONE_CONDITION.has(c.status))continue;
+      const left=entry.runs.filter(r=>!r.error).map(r=>{const run=c.runs.find(x=>x.phase===r.phase),j=run?.jobId?jobs.get(run.jobId):null;
+        if(j&&TERMINAL_JOB.has(j.status))return 0;const predicted=predictS(r.manifest,0,'cluster').totalS;
+        if(j?.progress?.step==='interFoam'&&Number.isFinite(j.progress?.etaS))return j.progress.etaS;
+        const elapsed=j?.timing?.runningAt?(Date.now()-j.timing.runningAt)/1000:0;return Math.max(predicted*.05,predicted-elapsed);});
+      worst=Math.max(worst,(left[0]??0)+Math.max(0,...left.slice(1)));
+    }
+    return {remainingS:worst,activeRunS:worst,basedOnFinishedRuns:Object.keys(clusterCalibration.entries??{}).length>0};
+  }
   const cores=record.options?.cores??defaultCores,pending=[],finished=[];let activeRun=null;
   for(const c of record.conditions){
     const entry=pred.get(c.id);if(!entry)return null;
@@ -127,9 +156,10 @@ function studyRemaining(record){
 /** Remaining and finish times for the running study and every queued study, in queue order. */
 function queueTimes(){
   const out=new Map(),now=Date.now();let offset=0,known=true;
-  for(const id of [studyRunner.activeId,...studyRunner.queuedIds].filter(Boolean)){
+  for(const id of [...studyRunner.activeIds,...studyRunner.queuedIds]){
     const record=studyRunner.records.get(id);if(!record)continue;
     const r=studyRemaining(record);
+    if(record.options?.backend==='cluster'&&studyRunner.activeIds.has(id)){out.set(id,r?{remainingS:r.remainingS,startsInS:0,finishAt:new Date(now+r.remainingS*1000).toISOString(),parallel:true}:{remainingS:null,startsInS:0,finishAt:null,estimating:true});continue;}
     if(!r||!known){known=false;out.set(id,{remainingS:r?.remainingS??null,startsInS:id===studyRunner.activeId?0:null,finishAt:null,estimating:!r});continue;}
     out.set(id,{remainingS:r.remainingS,startsInS:offset,finishAt:new Date(now+(offset+r.remainingS)*1000).toISOString(),basedOnFinishedRuns:r.basedOnFinishedRuns});
     offset+=r.remainingS;
@@ -137,10 +167,11 @@ function queueTimes(){
   return out;
 }
 function queueSummary(){
-  const times=queueTimes(),ids=[studyRunner.activeId,...studyRunner.queuedIds].filter(Boolean);
+  const times=queueTimes(),ids=[...studyRunner.activeIds,...studyRunner.queuedIds];
   const all=ids.map(id=>times.get(id)),known=all.length&&all.every(t=>t&&Number.isFinite(t.remainingS));
-  const totalS=known?all.reduce((s,t)=>s+t.remainingS,0):null;
-  return {studies:ids.length,activeId:studyRunner.activeId,queuedIds:studyRunner.queuedIds,remainingS:totalS,finishAt:totalS!==null?new Date(Date.now()+totalS*1000).toISOString():null,calibratedRunTypes:Object.keys(calibration.entries??{})};
+  // Parallel (cluster) studies overlap: the queue finishes when the slowest one does.
+  const totalS=known?all.reduce((s,t)=>t.parallel?Math.max(s,t.remainingS):s+t.remainingS,0):null;
+  return {studies:ids.length,backend:clusterReady()?'cluster':'local',activeIds:[...studyRunner.activeIds],activeId:studyRunner.activeId,queuedIds:studyRunner.queuedIds,remainingS:totalS,finishAt:totalS!==null?new Date(Date.now()+totalS*1000).toISOString():null,calibratedRunTypes:Object.keys(calibration.entries??{})};
 }
 async function saveCalibration(){try{await writeFile(CALIBRATION+'.tmp',JSON.stringify(calibration,null,2));await rename(CALIBRATION+'.tmp',CALIBRATION);}catch{/* estimates are optional */}}
 const geometryPath=id=>resolve(STUDIES,id+'.geometry.bin');
@@ -154,7 +185,8 @@ function selectConditions(plan,ids){
   plan.conditions=plan.conditions.filter(c=>wanted.has(c.id));return null;
 }
 async function createStudy(plan,trianglesMm,{speed,cores}){
-  const study=await studyRunner.create(plan,{id:randomUUID(),name:plan.name,speed,cores});
+  const backend=clusterReady()?'cluster':'local';if(backend==='cluster')cores=clusterConfig.cores;
+  const study=await studyRunner.create(plan,{id:randomUUID(),name:plan.name,speed,cores,backend,protocolVersion:core.PROTOCOL_VERSION});
   await saveGeometry(study.id,trianglesMm).catch(()=>{});
   const gk=geometryKey(trianglesMm);
   void (async()=>{const map=new Map();for(const c of plan.conditions)map.set(c.id,await prepareEstimates(gk,c,speed));studyPredictions.set(study.id,map);})().catch(()=>{});
@@ -191,9 +223,18 @@ function append(j,text){
   if(fresh.length&&j.listeners?.size)for(const send of j.listeners)send(fresh);
 }
 async function solverStatus(){
+  if(clusterReady()){
+    const ok=clusterCheck?.ok===true&&clusterCheck.solverInstalled===true;
+    return {available:ok,backend:'cluster',host:clusterConfig.host,image:IMAGE,version:'2312',maxCores:clusterConfig.cores,defaultCores:clusterConfig.cores,
+      message:ok?`Runs on ${clusterConfig.host} (${clusterConfig.cores} cores per test, all tests in parallel).`:'Cluster selected: open the cluster settings, press Test connection, then Install solver.'};
+  }
+  return dockerStatus();
+}
+/** Local Docker solver availability (used by local runs even while the cluster is selected). */
+async function dockerStatus(){
   if(availability&&Date.now()-availability.at<10_000)return availability.value;
   let value;
-  try{await execute('docker',[...dockerPrefix,'image','inspect',IMAGE],{env:dockerEnv,timeout:15_000,maxBuffer:256_000});value={available:true,image:IMAGE,version:'2312',maxCores,defaultCores,message:'Pinned OpenCFD v2312 Docker image is installed. Numerical and physical validation remain required.'};}
+  try{await execute('docker',[...dockerPrefix,'image','inspect',IMAGE],{env:dockerEnv,timeout:15_000,maxBuffer:256_000});value={available:true,backend:'local',image:IMAGE,version:'2312',maxCores,defaultCores,message:'Pinned OpenCFD v2312 Docker image is installed. Numerical and physical validation remain required.'};}
   catch{value={available:false,image:IMAGE,version:'2312',maxCores,defaultCores,message:'Start Docker, then run npm run cfd:pull to install the pinned solver image. No estimated readings will replace missing CFD output.'};}
   availability={at:Date.now(),value};return value;
 }
@@ -214,12 +255,15 @@ async function enqueueCase(body,context={}){
   const dir=resolve(RUNS,id);await writePackage(dir,prepared.package.files);
   const {trianglesMm,...summary}=prepared.request;void trianglesMm;
   const j={id,dir,name:summary.name,container:`hull-cfd-${id}`,status:'queued',stage:'Queued',createdAt:new Date().toISOString(),log:[],request:summary,manifest:prepared.package.manifest,hydro:prepared.hydro,geometryHash:prepared.geometryHash,protocolHash:prepared.protocolHash,
-    studyId:context.studyId??null,conditionId:context.conditionId??null,studyPhase:context.phase??null,cores:clampCores(context.cores??body?.cores),lineCount:0,listeners:new Set()};
+    studyId:context.studyId??null,conditionId:context.conditionId??null,studyPhase:context.phase??null,cores:clampCores(context.cores??body?.cores),lineCount:0,listeners:new Set(),
+    backend:(context.backend??(context.studyId?'local':clusterReady()?'cluster':'local'))==='cluster'?'cluster':'local'};
+  if(j.backend==='cluster')j.cores=clusterConfig.cores;
   jobs.set(id,j);await save(j);
   let done;
   if(context.studyId)done=new Promise(resolveJob=>jobWaiters.set(id,resolveJob));
   await context.onQueued?.(id);
   if(context.isCancelled?.()||j.status==='cancelled'){j.status='cancelled';j.stage='Cancelled before execution';await save(j);settleJob(j);}
+  else if(j.backend==='cluster')void submitToCluster(j);
   else{queue.push(j);void startNext();}
   return context.studyId?done:publicJob(j);
 }
@@ -229,7 +273,7 @@ async function startNext(){
   const j=queue.shift();if(j.status==='cancelled'){void startNext();return;}active=j;
   try{
     if(j.cancelRequested||j.status==='cancelled')return;
-    if(!(await solverStatus()).available)throw new Error('The pinned OpenFOAM image or Docker daemon is unavailable. Run npm run cfd:pull.');
+    if(!(await dockerStatus()).available)throw new Error('The pinned OpenFOAM image or Docker daemon is unavailable. Run npm run cfd:pull.');
     if(j.cancelRequested||j.status==='cancelled')return;
     await setState(j,'meshing','Checking surfaces and building finite-volume mesh');
     j.timing={startedAt:Date.now()};
@@ -237,32 +281,120 @@ async function startNext(){
     if(j.cancelRequested||j.status==='cancelled')return;
     const args=[...dockerPrefix,'run','--rm','--name',j.container,'--network','none','--cpus',String(j.cores),'--memory',memory,'-e',`HULL_NPROCS=${j.cores}`,'--shm-size','1g','--entrypoint','/bin/bash','--mount',`type=bind,src=${j.dir},dst=/case`,'--workdir','/case',IMAGE,'Allrun'];
     const child=spawn('docker',args,{env:dockerEnv,stdio:['ignore','pipe','pipe']});j.child=child;
-    const timer=setTimeout(()=>{j.error='The configured wall-clock solver time limit was reached.';void cancel(j);},maxMs);
-    const stream=async chunk=>{const text=chunk.toString();append(j,text);await writeFile(resolve(j.dir,'service-runner.log'),text,{flag:'a'}).catch(()=>{});};
+    const timer=setTimeout(()=>{j.error=`Stopped by the safety time limit (${Math.round(maxMs/3_600_000)} h per run). Set CFD_TIMEOUT_MS to allow longer runs.`;void cancel(j);},maxMs);
+    // Same hang watchdog as on the cluster: no solver output for STALL_MS stops the run instead of holding the machine.
+    let lastOutputAt=Date.now();
+    const stall=setInterval(()=>{if(Date.now()-lastOutputAt>STALL_MS){j.error=`The solver stopped responding (no output for ${Math.round(STALL_MS/60000)} minutes) and was stopped. Re-run this test; it is not a hull result.`;void cancel(j);}},60_000);
+    const stream=async chunk=>{lastOutputAt=Date.now();const text=chunk.toString();append(j,text);await writeFile(resolve(j.dir,'service-runner.log'),text,{flag:'a'}).catch(()=>{});};
     child.stdout.on('data',stream);child.stderr.on('data',stream);
-    const code=await new Promise((res,rej)=>{child.once('error',rej);child.once('exit',res);}).finally(()=>clearTimeout(timer));j.child=null;
+    const code=await new Promise((res,rej)=>{child.once('error',rej);child.once('exit',res);}).finally(()=>{clearTimeout(timer);clearInterval(stall);});j.child=null;
     if(j.cancelRequested||j.status==='cancelled')return;
     if(code!==0)throw new Error(`OpenFOAM stopped with exit ${code}. Inspect the stage logs; no CFD value was fabricated.`);
+    await finishRun(j);
+  }catch(error){if(j.status!=='cancelled')await failRun(j,error);}
+  finally{settleJob(j);active=null;j.child=null;void startNext();}
+}
+async function failRun(j,error){j.error=error.message;append(j,error.message+'\n');j.hint=explainFailure(j.error,j.log.slice(-300));if(j.timing)j.timing.finishedAt=Date.now();await setState(j,'failed',j.hint?.title??'Solver or preflight failed');}
+/** Read the genuine solver output of a finished run (local or cluster), learn its timing, and mark it completed. */
+async function finishRun(j){
     await setState(j,'solving','Reading actual force and motion histories');
     j.result=await readCfdRunResult(j.dir,{manifest:j.manifest,hydro:j.hydro,geometryHash:j.geometryHash,protocolHash:j.protocolHash,...core});
     // The reader exposes actual mesh counts under solverRun; keep the UI contract explicit.
     j.result.mesh={cells:j.result.solverRun?.actualMeshCells??null,quality:j.result.quality?.meshOkay??null};
     if(j.result.motion)j.result.motion.maxRollDeg=j.result.motion.maxAbsRollDeg;
+    // A cluster job's streamed log can trail the finished run; show the completed solve as 100%.
+    if(j.result.quality?.completedTime===true&&j.progress){j.progress.percent=100;j.progress.etaS=0;if(j.progress.endTimeS)j.progress.simTimeS=j.progress.endTimeS;}
     await writeFile(resolve(j.dir,'results.json'),JSON.stringify(j.result,null,2));
     j.timing.finishedAt=Date.now();
     // Calibrate time estimates from runs that reached their full simulated time on this machine.
     if(j.result.quality?.completedTime===true&&j.progress?.solveStartedAt&&j.progress?.stepCount>10){
-      calibration=learn(calibration,{manifest:j.manifest,actualCells:j.result.solverRun?.actualMeshCells,steps:j.progress.stepCount,solveWallS:(j.timing.finishedAt-j.progress.solveStartedAt)/1000,meshWallS:(j.progress.solveStartedAt-j.timing.startedAt)/1000,cores:j.cores});
-      void saveCalibration();
+      const sample={manifest:j.manifest,actualCells:j.result.solverRun?.actualMeshCells,steps:j.progress.stepCount,solveWallS:(j.timing.finishedAt-j.progress.solveStartedAt)/1000,meshWallS:(j.progress.solveStartedAt-(j.timing.runningAt??j.timing.startedAt))/1000,cores:j.cores};
+      if(j.backend==='cluster'){clusterCalibration=learn(clusterCalibration,{...sample,saturation:clusterConfig.cores});void saveJson(CLUSTER_CALIBRATION,clusterCalibration);}
+      else{calibration=learn(calibration,sample);void saveCalibration();}
     }
     await setState(j,'completed','Completed — convergence and physical validation pending');
-  }catch(error){if(j.status!=='cancelled'){j.error=error.message;append(j,error.message+'\n');j.hint=explainFailure(j.error,j.log.slice(-300));if(j.timing)j.timing.finishedAt=Date.now();await setState(j,'failed',j.hint?.title??'Solver or preflight failed');}}
-  finally{settleJob(j);active=null;j.child=null;void startNext();}
+}
+async function saveJson(path,value){try{await writeFile(path+'.tmp',JSON.stringify(value,null,2));await rename(path+'.tmp',path);}catch{/* optional */}}
+
+/* ---------- Cluster execution ---------- */
+async function submitToCluster(j){
+  try{
+    if(!clusterReady())throw new Error('Cluster settings are incomplete. Open "Run on Roihu" settings.');
+    const cert=await cluster.certificateStatus(clusterConfig);
+    if(cert.required&&!cert.valid)throw new Error(cert.message);
+    j.remoteDir=`${clusterConfig.remoteDir}/runs/${j.id}`;j.timing={startedAt:Date.now()};
+    await setState(j,'queued','Uploading case to the cluster');
+    append(j,`Uploading case to ${clusterConfig.host} (${j.remoteDir})\n`);
+    await writeFile(resolve(j.dir,'job.sh'),cluster.batchScript(clusterConfig,{name:'hull-'+j.id.slice(0,8),cores:j.cores}));
+    await cluster.upload(clusterConfig,j.dir,j.remoteDir);
+    if(j.cancelRequested)return;
+    j.slurmId=await cluster.submit(clusterConfig,j.remoteDir);j.offset=0;j.slurmState='PENDING';
+    append(j,`Submitted Slurm job ${j.slurmId} (${j.cores} cores, partition ${clusterConfig.partition}, up to ${clusterConfig.hours} h)\n`);
+    await setState(j,'queued',cluster.SLURM_TEXT.PENDING);
+    if(j.cancelRequested){await cluster.cancelRemote(clusterConfig,j.slurmId);return;}
+    clusterJobs.set(j.id,j);void pollCluster();
+  }catch(error){if(j.status!=='cancelled'){await failRun(j,error);settleJob(j);}}
+}
+/** Poll all cluster jobs with one SSH call: live logs, Slurm state, and download/finish when a job ends. */
+async function pollCluster(){
+  if(clusterPolling)return;clusterPolling=true;
+  try{
+    while(clusterJobs.size){
+      const list=[...clusterJobs.values()];let states;
+      try{states=await cluster.poll(clusterConfig,list.map(j=>({slurmId:j.slurmId,remoteDir:j.remoteDir,offset:j.offset})));}
+      catch(error){for(const j of list)if(j.lastConnError!==error.message){j.lastConnError=error.message;append(j,'Cluster connection problem (the job keeps running on the cluster; retrying every 20 s): '+error.message+'\n');}await new Promise(r=>setTimeout(r,POLL_MS));continue;}
+      for(const j of list)j.lastConnError=null;
+      for(const j of list){
+        const s=states.get(String(j.slurmId));if(!s||!clusterJobs.has(j.id))continue;
+        if(s.text){append(j,s.text);j.offset=s.bytes;await writeFile(resolve(j.dir,'service-runner.log'),s.text,{flag:'a'}).catch(()=>{});}
+        const state=s.state.replace(/[+].*$/,'');j.slurmState=state||j.slurmState;
+        if(cluster.RUNNING_STATES.has(state)){
+          if(state==='RUNNING'&&!j.timing.runningAt){j.timing.runningAt=Date.now();if(j.status==='queued')await setState(j,'meshing',cluster.SLURM_TEXT.RUNNING);}
+          else if(state==='PENDING'&&j.status==='queued')j.stage=cluster.SLURM_TEXT.PENDING;
+          // Watchdog: a running job whose log has not grown for STALL_MS has hung (seen once in a wave run: MPI stopped
+          // mid-step and the job would have held its cores until the time limit). Cancel it and report it for a re-run.
+          if(state==='RUNNING'){
+            if(s.size!==j.lastLogSize){j.lastLogSize=s.size;j.lastLogGrowthAt=Date.now();}
+            else if(Date.now()-(j.lastLogGrowthAt??Date.now())>STALL_MS&&!j.stallCancelled){
+              j.stallCancelled=true;clusterJobs.delete(j.id);await cluster.cancelRemote(clusterConfig,j.slurmId);
+              await failRun(j,new Error(`The solver stopped responding on the cluster (no output for ${Math.round(STALL_MS/60000)} minutes), so the job was cancelled to save your allocation. Re-run this test; it is not a hull result.`));
+              settleJob(j);
+            }
+          }
+          continue;
+        }
+        const exit=s.exitCode!=null?[null,s.exitCode]:/HULL_EXIT (\d+)/.exec(j.log.slice(-50).join('\n'));
+        if(!exit&&!state){j.missingPolls=(j.missingPolls??0)+1;if(j.missingPolls<4)continue;}
+        clusterJobs.delete(j.id);
+        void (async()=>{
+          try{
+            if(j.cancelRequested)return;
+            if(!exit||exit[1]!=='0')throw new Error(state==='TIMEOUT'?`The cluster stopped the job at its ${clusterConfig.hours} h time limit. Increase "Max hours per run" in the cluster settings.`:state==='OUT_OF_MEMORY'?'The cluster job ran out of memory. Set "Memory per run" higher in the cluster settings.':`OpenFOAM stopped on the cluster (Slurm state ${state||'unknown'}, exit ${exit?.[1]??'none'}). Inspect the stage logs; no CFD value was fabricated.`);
+            await setState(j,'solving','Downloading results from the cluster');
+            // A finished job's results stay on the cluster, so a lost connection or an expired certificate only delays the download.
+            for(let attempt=0,last='';;attempt++){
+              try{await cluster.download(clusterConfig,j.remoteDir,j.dir);break;}
+              catch(error){
+                if(j.cancelRequested||attempt>=4320)throw error;
+                if(error.message!==last){last=error.message;append(j,'Download from the cluster failed (retrying every 20 s; the results are safe on the cluster): '+error.message+'\n');}
+                await new Promise(r=>setTimeout(r,POLL_MS));
+              }
+            }
+            await finishRun(j);
+          }catch(error){if(j.status!=='cancelled')await failRun(j,error);}
+          finally{settleJob(j);}
+        })();
+      }
+      await new Promise(r=>setTimeout(r,POLL_MS));
+    }
+  }finally{clusterPolling=false;}
 }
 async function cancel(j){
   j.cancelRequested=true;
   j.status='cancelled';j.stage=j.error?'Stopped at time limit':'Cancelled by user';
-  if(j.child){await execute('docker',[...dockerPrefix,'rm','-f',j.container],{env:dockerEnv,timeout:15_000}).catch(()=>{});j.child.kill('SIGTERM');}
+  const child=j.child;
+  if(child){await execute('docker',[...dockerPrefix,'rm','-f',j.container],{env:dockerEnv,timeout:15_000}).catch(()=>{});child.kill('SIGTERM');}
+  if(j.backend==='cluster'){clusterJobs.delete(j.id);if(j.slurmId)await cluster.cancelRemote(clusterConfig,j.slurmId);}
   await save(j);settleJob(j);void startNext();
 }
 async function requestBody(req){
@@ -297,16 +429,40 @@ const server=http.createServer(async(req,res)=>{
     if(path==='/api/cfd/status'&&req.method==='GET')return json(res,200,await solverStatus());
     if(path==='/api/cfd/studies'&&req.method==='GET')return json(res,200,{studies:studyRunner.list().sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt))).slice(-200).map(publicStudy),queue:queueSummary()});
     if(path==='/api/cfd/queue'&&req.method==='GET')return json(res,200,queueSummary());
+    if(path==='/api/cfd/cluster'&&req.method==='GET')return json(res,200,{config:clusterConfig,problems:cluster.clusterProblems(clusterConfig),check:clusterCheck,install:clusterInstall,activeJobs:clusterJobs.size,certificate:await cluster.certificateStatus(clusterConfig)});
+    if(path==='/api/cfd/cluster'&&req.method==='POST'){
+      const next=cluster.normaliseClusterConfig({...clusterConfig,...await requestBody(req)});
+      const changedTarget=['host','user','remoteDir','sshKey'].some(k=>next[k]!==clusterConfig[k]);
+      if(clusterJobs.size&&changedTarget)return json(res,409,{error:'Cluster jobs are running. Change the connection settings after they finish.'});
+      clusterConfig=next;if(changedTarget)clusterCheck=null;await saveJson(CLUSTER_CONFIG,clusterConfig);
+      return json(res,200,{config:clusterConfig,problems:cluster.clusterProblems(clusterConfig),check:clusterCheck,install:clusterInstall});
+    }
+    if(path==='/api/cfd/cluster/check'&&req.method==='POST'){
+      const problems=cluster.clusterProblems(clusterConfig);if(problems.length)return json(res,400,{error:problems.join(' ')});
+      try{clusterCheck={ok:true,at:new Date().toISOString(),...await cluster.checkCluster(clusterConfig)};}
+      catch(error){clusterCheck={ok:false,at:new Date().toISOString(),error:error.message};}
+      return json(res,200,{config:clusterConfig,check:clusterCheck,install:clusterInstall,certificate:await cluster.certificateStatus(clusterConfig)});
+    }
+    if(path==='/api/cfd/cluster/install'&&req.method==='POST'){
+      const problems=cluster.clusterProblems(clusterConfig);if(problems.length)return json(res,400,{error:problems.join(' ')});
+      if(clusterInstall.state!=='running'){
+        clusterInstall={state:'running',message:'Downloading the OpenFOAM v2312 image on the cluster (about 700 MB; usually 5–20 minutes).',startedAt:new Date().toISOString()};
+        void cluster.installSolver(clusterConfig,IMAGE).then(async out=>{clusterInstall={state:'done',message:/already/.test(out)?'The solver was already installed.':'Solver installed on the cluster.'};try{clusterCheck={ok:true,at:new Date().toISOString(),...await cluster.checkCluster(clusterConfig)};}catch{}})
+          .catch(error=>{clusterInstall={state:'failed',message:error.message};});
+      }
+      return json(res,202,{install:clusterInstall});
+    }
     if(path==='/api/cfd/queue/cancel'&&req.method==='POST'){
       for(const id of [...studyRunner.queuedIds].reverse())await studyRunner.cancel(id);
-      if(studyRunner.activeId)await studyRunner.cancel(studyRunner.activeId);
+      for(const id of [...studyRunner.activeIds])await studyRunner.cancel(id);
       return json(res,200,queueSummary());
     }
     if(path==='/api/cfd/estimate'&&req.method==='POST'){
       const body=await requestBody(req),{plan,fix}=await planFor(body.name,body.trianglesMm);
       const speed=body.speed==='quick'?'quick':'full',cores=clampCores(Number(body.cores)),gk=geometryKey(fix.trianglesMm);
-      const conditions=[];for(const c of plan.conditions)conditions.push(summariseCondition(c,await prepareEstimates(gk,c,speed),cores));
-      return json(res,200,{repairNotes:fix.notes,geometryMode:plan.geometryMode,speed,cores,calibrated:Object.keys(calibration.entries??{}).length>0,machineSpeedFactor:calibration.machineSpeedFactor??1,conditions,queue:queueSummary()});
+      const backend=clusterReady()?'cluster':'local',coresUsed=backend==='cluster'?clusterConfig.cores:cores;
+      const conditions=[];for(const c of plan.conditions)conditions.push(summariseCondition(c,await prepareEstimates(gk,c,speed),coresUsed,backend));
+      return json(res,200,{repairNotes:fix.notes,geometryMode:plan.geometryMode,speed,cores:coresUsed,backend,parallel:backend==='cluster',calibrated:Object.keys((backend==='cluster'?clusterCalibration:calibration).entries??{}).length>0,machineSpeedFactor:calibration.machineSpeedFactor??1,conditions,queue:queueSummary()});
     }
     if(path==='/api/cfd/studies'&&req.method==='POST'){
       if(!(await solverStatus()).available)return json(res,409,{error:'Start Docker and run npm run cfd:pull before starting automatic tests.'});
@@ -339,7 +495,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(path==='/api/cfd/jobs'&&req.method==='GET')return json(res,200,{jobs:[...jobs.values()].map(publicJob)});
     if(path==='/api/cfd/jobs'&&req.method==='POST'){
-      if([...jobs.values()].filter(j=>['queued','preparing','meshing','solving'].includes(j.status)).length>=8)return json(res,429,{error:'The local queue is full. Finish or cancel a job before adding more.'});
+      if(!clusterReady()&&[...jobs.values()].filter(j=>['queued','preparing','meshing','solving'].includes(j.status)).length>=8)return json(res,429,{error:'The local queue is full. Finish or cancel a job before adding more.'});
       const body=await requestBody(req);if(Array.isArray(body.trianglesMm))body.trianglesMm=(await repaired(body.trianglesMm)).trianglesMm;const j=await enqueueCase(body);json(res,202,{id:j.id});return;
     }
     const live=/^\/api\/cfd\/jobs\/([a-f0-9-]{36})\/stream$/.exec(path);
@@ -382,13 +538,18 @@ const server=http.createServer(async(req,res)=>{
 await mkdir(RUNS,{recursive:true});
 await mkdir(STUDIES,{recursive:true});
 try{calibration=JSON.parse(await readFile(CALIBRATION,'utf8'));}catch{calibration={};}
+clusterConfig=await cluster.loadClusterConfig(CLUSTER_CONFIG);
+try{clusterCalibration=JSON.parse(await readFile(CLUSTER_CALIBRATION,'utf8'));}catch{clusterCalibration={};}
 // Completed results survive a local service restart; interrupted work is never replayed silently.
 for(const entry of await readdir(RUNS,{withFileTypes:true})) {
   if(!entry.isDirectory()||entry.isSymbolicLink()||!/^[a-f0-9-]{36}$/.test(entry.name))continue;
   try {
     const dir=resolve(RUNS,entry.name),record=JSON.parse(await readFile(resolve(dir,'job.json'),'utf8'));
     const j={...record,listeners:new Set(),dir,container:`hull-cfd-${entry.name}`,log:Array.isArray(record.logTail)?record.logTail:[],partial:'',geometryHash:record.manifest?.sourceHash,protocolHash:record.manifest?.protocolKey,hydro:record.result?.hydro??JSON.parse(await readFile(resolve(dir,'hydrostatics.json'),'utf8'))};
-    if(!['completed','failed','cancelled'].includes(j.status)){j.status='failed';j.error='Local service restarted before this job completed. Inspect its raw logs and submit a new case if needed.';j.stage='Interrupted by service restart';}
+    if(!['completed','failed','cancelled'].includes(j.status)){
+      // A cluster job left running would only spend the project's allocation: stop it (best effort).
+      if(j.backend==='cluster'&&j.slurmId&&clusterReady())void cluster.cancelRemote(clusterConfig,j.slurmId);
+      j.status='failed';j.error='Local service restarted before this job completed. Inspect its raw logs and submit a new case if needed.';j.stage='Interrupted by service restart';}
     jobs.set(j.id,j);
   } catch { /* Ignore incomplete temporary directories rather than inventing a result. */ }
 }
@@ -397,4 +558,4 @@ for(const entry of await readdir(STUDIES,{withFileTypes:true})){
   try{await studyRunner.restore(JSON.parse(await readFile(resolve(STUDIES,entry.name),'utf8')));}catch{/* Ignore incomplete study snapshots; never fabricate progress or resume execution. */}
 }
 server.listen(PORT,HOST,()=>console.log(`Hull Test Bench + OpenFOAM: http://${HOST}:${PORT}\nJobs remain in ${RUNS}\nImage: ${IMAGE}\nResources: ${defaultCores} of ${maxCores} CPU cores by default (choose in the app), ${memory} RAM. CFD output remains unvalidated until convergence and physical testing.`));
-for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{for(const id of [...studyRunner.queuedIds])await studyRunner.cancel(id);if(studyRunner.activeId)await studyRunner.cancel(studyRunner.activeId);if(active&&active.status!=='cancelled')await cancel(active);server.close(()=>process.exit(0));});
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{for(const id of [...studyRunner.queuedIds])await studyRunner.cancel(id);for(const id of [...studyRunner.activeIds])await studyRunner.cancel(id);if(active&&active.status!=='cancelled')await cancel(active);server.close(()=>process.exit(0));});

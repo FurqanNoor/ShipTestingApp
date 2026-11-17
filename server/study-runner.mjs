@@ -89,11 +89,11 @@ export function assessCondition(condition){
     scope:'Declared mesh/time/domain sensitivity diagnostics only. Uniform CAD mass assumptions, wave propagation/reflection, flow-model uncertainty and physical accuracy remain unvalidated.'};
 }
 
-function initialRecord(plan,{id,name,now,speed='full',cores=1}){
+function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVersion}){
   const phases=phasesFor(speed);
   const {conditions,...summary}=plan;
   return {schema:1,id,name:name??plan.name??'Automatic hull study',status:'queued',stage:'Preparing automatic tests',createdAt:now,updatedAt:now,
-    plan:copy(summary),options:{speed,cores},conditions:conditions.map(({request,...c})=>({...copy(c),speed,status:'pending',stage:'Waiting',runs:[]})),
+    plan:copy(summary),options:{speed,cores,...(backend?{backend}:{}),...(protocolVersion?{protocolVersion}:{})},conditions:conditions.map(({request,...c})=>({...copy(c),speed,status:'pending',stage:'Waiting',runs:[]})),
     progress:{conditionsTotal:conditions.length,conditionsFinished:0,solvesFinished:0,solvesMaximum:conditions.length*phases.length},activeJobId:null,error:null,
     physicalValidation:'not-performed',rankable:false};
 }
@@ -102,16 +102,18 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
   for(let i=0;i<tris.length;i+=3){xmin=Math.min(xmin,tris[i]);xmax=Math.max(xmax,tris[i]);}
   const lengthM=(xmax-xmin)/1000,period=request.wavePeriodS;
   if(speed==='quick'){
-    // ~6 hull lengths of towing (calm) or wave arrival + 8 periods (waves, set by the case generator).
+    // Calm: 16 hull lengths of towing, averaged after the ~5 L/U start-up (the absorbing outlet makes the drag stationary;
+    // long Roihu runs: 16- vs 32-core means agree within 1%, the old 6 L/U window was ~11% low and core-count dependent).
+    // Waves: arrival + 8 periods (set by the case generator).
     // Courant-limited adaptive steps instead of a fixed 0.5 ms cap.
-    const calm=request.mode==='calm',duration=calm?Math.max(3,6*lengthM/request.speedMps):1;
+    const calm=request.mode==='calm',duration=calm?Math.max(8,16*lengthM/request.speedMps):1;
     return {...request,fidelity:'quick',durationS:duration,mesh:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
   }
   // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium and fine refine the
   // grid by sqrt(2) each. Same simulated time for every phase (comparisons require it), longer than Quick:
-  // calm 12 hull lengths (averaged over the settled second half), waves 25 periods (~12 measured after warm-up).
+  // calm the same 16 hull lengths as Quick (averaged after start-up), waves 25 periods (~12 measured after warm-up).
   const calm=request.mode==='calm';
-  const duration=calm?Math.max(6,12*lengthM/request.speedMps):25*period;
+  const duration=calm?Math.max(8,16*lengthM/request.speedMps):25*period;
   const base={...request,fidelity:'quick',durationS:duration,mesh:['medium','fine'].includes(phase)?phase:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
   if(phase==='time-step'){
     // Halve both the Courant limit and the cap, so the solver's actual step really halves.
@@ -122,18 +124,21 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
 
 export const MAX_QUEUED_STUDIES=100;
 /**
- * The injected runner executes one study at a time, in submission order. Further studies wait in a queue
- * (e.g. one per competition entry). It never retries or resumes work silently.
+ * Runs studies in submission order. Locally one study and one solve run at a time (slots {studies:1,runs:1}); on a
+ * cluster several studies, and every solve of a study, can run at once because the solves are independent.
+ * It never retries or resumes work silently.
  */
 export class StudyRunner {
-  constructor({runCase,cancelCase,persist=async()=>{},now=()=>new Date().toISOString()}){
-    this.runCase=runCase;this.cancelCase=cancelCase;this.persist=persist;this.now=now;this.records=new Map();this.activeId=null;this.waiting=[];
+  constructor({runCase,cancelCase,persist=async()=>{},now=()=>new Date().toISOString(),slots=()=>({studies:1,runs:1})}){
+    this.runCase=runCase;this.cancelCase=cancelCase;this.persist=persist;this.now=now;this.slots=slots;this.records=new Map();this.activeIds=new Set();this.waiting=[];
   }
-  get busy(){return this.activeId!==null;}
+  /** First running study (kept for callers that show one active study). */
+  get activeId(){return this.activeIds.values().next().value??null;}
+  get busy(){return this.activeIds.size>=Math.max(1,this.slots().studies||1);}
   /** Study ids waiting to run, in order. */
   get queuedIds(){return this.waiting.map(w=>w.study.id);}
-  start(study,plan){this.activeId=study.id;this.running=Promise.resolve().then(()=>this.execute(study,plan));}
-  next(){const n=this.waiting.shift();if(n)this.start(n.study,n.plan);}
+  start(study,plan){this.activeIds.add(study.id);this.running=Promise.resolve().then(()=>this.execute(study,plan));}
+  next(){while(!this.busy&&this.waiting.length){const n=this.waiting.shift();this.start(n.study,n.plan);}}
   get(id){const record=this.records.get(id);return record?copy(record):null;}
   list(){return [...this.records.values()].map(copy);}
   async save(study){study.updatedAt=this.now();study.progress.conditionsFinished=study.conditions.filter(c=>TERMINAL.has(c.status)).length;study.progress.solvesFinished=study.conditions.flatMap(c=>c.runs).filter(r=>r.jobId&&TERMINAL.has(r.status)).length;await this.persist(copy(study));}
@@ -169,45 +174,71 @@ export class StudyRunner {
     study.status='cancelled';study.stage='Cancelled by user';
     for(const c of study.conditions)if(['pending','running'].includes(c.status)){c.status='cancelled';c.stage='Cancelled';}
     await this.save(study);
-    if(study.activeJobId)await this.cancelCase(study.activeJobId);
+    for(const jobId of new Set([...(study.activeJobIds??[]),study.activeJobId].filter(Boolean)))await this.cancelCase(jobId);
     return this.get(id);
+  }
+  /** One solve of one condition. Returns false when the condition is blocked (no further solves make sense). */
+  async runPhase(study,condition,planned,phase,speed){
+    if(study.status==='cancelled')return false;
+    const reference=getResult(condition.runs.find(r=>r.phase==='coarse'));
+    const run={phase,status:'preparing'};condition.runs.push(run);condition.stage=`${phase}: preparing`;study.stage=`${condition.label} · ${phase}`;await this.save(study);
+    try{
+      const job=await this.runCase(numericalRequest(planned.request,phase,reference,speed),{
+        studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
+        onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
+      });
+      run.jobId=job.id;run.status=job.status;run.result=job.result??null;run.error=job.error??null;run.hint=job.hint??(job.status==='failed'?explainFailure(job.error):null);if(run.hint&&!condition.hint)condition.hint=run.hint;
+      if(job.status==='cancelled'&&study.status!=='cancelled'){study.status='cancelled';study.stage='Stopped after job cancellation';for(const c of study.conditions)if(['pending','running'].includes(c.status))c.status='cancelled';}
+    }catch(error){
+      if(study.status==='cancelled'){run.status='cancelled';return false;}
+      run.status=error.preflight===true?'blocked':'failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);if(run.hint&&!condition.hint)condition.hint=run.hint;
+      if(error.preflight===true){condition.error=run.error;condition.status='blocked';condition.stage='Blocked by geometry, flotation or resource preflight';return false;}
+    }finally{
+      if(run.jobId&&study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);
+      if(study.activeJobId===run.jobId)study.activeJobId=study.activeJobIds?.at(-1)??null;
+      await this.save(study);
+    }
+    return true;
+  }
+  finishCondition(study,condition){
+    condition.result=assessCondition(condition);
+    if(study.status!=='cancelled'&&condition.status!=='blocked'){
+      condition.status=condition.runs.some(r=>getResult(r))?'completed':'failed';
+      condition.stage=condition.result.quick?(condition.status==='completed'?'Quick run finished — rough numbers, no sensitivity checks':'Quick run failed — see the log'):condition.result.numericalSensitivityPassed?'Sensitivity checks passed; physical validation pending':'Finished with inconclusive numerical sensitivity';
+    }
   }
   async execute(study,plan){
     try{
       if(study.status==='cancelled')return;
       study.status='running';await this.save(study);
-      for(let index=0;index<plan.conditions.length;index++){
-        if(study.status==='cancelled')break;
-        const condition=study.conditions[index],planned=plan.conditions[index];
-        condition.status='running';condition.stage='Preparing coarse mesh';study.stage=`${condition.label} · coarse`;await this.save(study);
-        const speed=study.options?.speed??'full';
-        for(const phase of phasesFor(speed)){
-          if(study.status==='cancelled')break;
-          const fine=getResult(condition.runs.find(r=>r.phase==='coarse'));
-          if(['time-step','domain'].includes(phase)&&!fine){condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});continue;}
-          const run={phase,status:'preparing'};condition.runs.push(run);condition.stage=`${phase}: preparing`;study.stage=`${condition.label} · ${phase}`;await this.save(study);
-          try{
-            const job=await this.runCase(numericalRequest(planned.request,phase,fine,speed),{
-              studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,isCancelled:()=>study.status==='cancelled',
-              onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
-            });
-            run.jobId=job.id;run.status=job.status;run.result=job.result??null;run.error=job.error??null;run.hint=job.hint??(job.status==='failed'?explainFailure(job.error):null);if(run.hint&&!condition.hint)condition.hint=run.hint;
-            if(job.status==='cancelled'&&study.status!=='cancelled'){study.status='cancelled';study.stage='Stopped after job cancellation';for(const c of study.conditions)if(['pending','running'].includes(c.status))c.status='cancelled';}
-          }catch(error){
-            if(study.status==='cancelled'){run.status='cancelled';break;}
-            run.status=error.preflight===true?'blocked':'failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);if(run.hint&&!condition.hint)condition.hint=run.hint;
-            if(error.preflight===true){condition.error=run.error;condition.status='blocked';condition.stage='Blocked by geometry, flotation or resource preflight';break;}
-          }finally{study.activeJobId=null;await this.save(study);}
-        }
-        condition.result=assessCondition(condition);
-        if(study.status!=='cancelled'&&condition.status!=='blocked'){
-          condition.status=condition.runs.some(r=>getResult(r))?'completed':'failed';
-          condition.stage=condition.result.quick?(condition.status==='completed'?'Quick run finished — rough numbers, no sensitivity checks':'Quick run failed — see the log'):condition.result.numericalSensitivityPassed?'Sensitivity checks passed; physical validation pending':'Finished with inconclusive numerical sensitivity';
-        }
+      const speed=study.options?.speed??'full',parallel=Math.max(1,this.slots().runs||1);
+      if(parallel>1){
+        // Cluster: the coarse run of every condition first (it also preflights the condition), then all other phases.
+        const conditions=plan.conditions.map((planned,index)=>({planned,condition:study.conditions[index]}));
+        for(const {condition} of conditions){condition.status='running';condition.stage='Submitting';}
         await this.save(study);
+        await Promise.all(conditions.map(async({planned,condition})=>{
+          const phases=phasesFor(speed);
+          if(!(await this.runPhase(study,condition,planned,phases[0],speed))){this.finishCondition(study,condition);return;}
+          await Promise.all(phases.slice(1).map(phase=>this.runPhase(study,condition,planned,phase,speed)));
+          this.finishCondition(study,condition);await this.save(study);
+        }));
+      }else{
+        for(let index=0;index<plan.conditions.length;index++){
+          if(study.status==='cancelled')break;
+          const condition=study.conditions[index],planned=plan.conditions[index];
+          condition.status='running';condition.stage='Preparing coarse mesh';study.stage=`${condition.label} · coarse`;await this.save(study);
+          for(const phase of phasesFor(speed)){
+            if(study.status==='cancelled')break;
+            if(['time-step','domain'].includes(phase)&&!getResult(condition.runs.find(r=>r.phase==='coarse'))){condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});continue;}
+            if(!(await this.runPhase(study,condition,planned,phase,speed)))break;
+          }
+          this.finishCondition(study,condition);
+          await this.save(study);
+        }
       }
       if(study.status!=='cancelled'){study.status='completed';study.stage='Automatic tests finished — review numerical sensitivity and assumptions';}
     }catch(error){study.status='failed';study.stage='Automatic study stopped';study.error=String(error.message??error);}
-    finally{study.activeJobId=null;await this.save(study);if(this.activeId===study.id){this.activeId=null;this.next();}}
+    finally{study.activeJobId=null;study.activeJobIds=[];await this.save(study);this.activeIds.delete(study.id);this.next();}
   }
 }

@@ -9,6 +9,10 @@
  * Every finished run on this machine updates the calibration (cfd-runs/calibration.json).
  */
 export const PARALLEL_EXPONENT=.83; // measured: 4 cores ran 3.15x faster than 1 core
+/** Ranks beyond this add no speed on typical CPUs (memory bandwidth); measured 8 fastest on an 8-core laptop. */
+export const PARALLEL_SATURATION=8;
+/** Speed-up over one core. saturation: ranks beyond which a machine gains nothing (8 on desktops/laptops; a cluster node with many memory channels keeps scaling). */
+export const parallelSpeedup=(cores,saturation=PARALLEL_SATURATION)=>Math.min(Math.max(1,cores),Math.max(1,saturation))**PARALLEL_EXPONENT;
 export const DEFAULTS={
   'calm:quick':{secondsPerCellStep:7.4e-6,dtPerFinestCell:.356,cellGrowth:1.19,meshSecondsPerCell:1.6e-4},
   'calm:standard':{secondsPerCellStep:1.3e-5,dtPerFinestCell:.12,cellGrowth:1.19,meshSecondsPerCell:1.6e-4},
@@ -34,25 +38,25 @@ export function parameters(key,calibration={}){
 }
 
 /** Predict one run from its generated manifest. */
-export function predictRun(manifest,{cores=1,calibration}={}){
+export function predictRun(manifest,{cores=1,calibration,saturation}={}){
   const key=runKey(manifest),p=parameters(key,calibration);
   const n=manifest?.numerics??{},mesh=manifest?.mesh??{};
   const cells=Math.max(1,(Number(mesh.estimatedBaseCells)||1)*p.cellGrowth);
   const dtCap=finite(n.maxDeltaTS)?n.maxDeltaTS:.001;
   const dt=Math.max(1e-7,Math.min(dtCap,p.dtPerFinestCell*(finite(mesh.finestCellM)?mesh.finestCellM:.003)));
   const steps=(finite(n.durationS)?n.durationS:1)/dt;
-  const solveS=steps*cells*p.secondsPerCellStep/Math.max(1,cores)**PARALLEL_EXPONENT;
+  const solveS=steps*cells*p.secondsPerCellStep/parallelSpeedup(cores,saturation);
   const meshS=cells*p.meshSecondsPerCell;
   return {key,cells:Math.round(cells),steps:Math.round(steps),meshS,solveS,totalS:meshS+solveS,calibrated:p.calibrated};
 }
 
 /** Learn from a finished run's measured timings. Returns a new calibration object. */
 export function learn(calibration={},sample){
-  const {manifest,actualCells,steps,solveWallS,meshWallS,cores=1}=sample??{};
+  const {manifest,actualCells,steps,solveWallS,meshWallS,cores=1,saturation}=sample??{};
   if(!manifest||!finite(actualCells)||!finite(steps)||!finite(solveWallS))return calibration;
   const key=runKey(manifest),mesh=manifest.mesh??{},n=manifest.numerics??{};
   const measured={
-    secondsPerCellStep:solveWallS*Math.max(1,cores)**PARALLEL_EXPONENT/(steps*actualCells),
+    secondsPerCellStep:solveWallS*parallelSpeedup(cores,saturation)/(steps*actualCells),
     dtPerFinestCell:finite(n.durationS)&&finite(mesh.finestCellM)?n.durationS/steps/mesh.finestCellM:undefined,
     cellGrowth:finite(mesh.estimatedBaseCells)?actualCells/mesh.estimatedBaseCells:undefined,
     meshSecondsPerCell:finite(meshWallS)?meshWallS/actualCells:undefined,

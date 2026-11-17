@@ -279,7 +279,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
   const generationGain=preset?waveGenerationGain(preset,fidelity,mesh):1;
   if (mode !== 'calm') pkg = extendCaseWithWaves(pkg, { kind: mode, generationGain, heightM: waveHeightM!, periodS: wavePeriodS!, massKg, cgM, inertiaKgM2,inertiaTensorKgM2,inertiaSource,inertiaAssumptions:estimatedMassProperties?.assumptions,rollAxis:pose?pose.rotation.map(row=>row[0]) as HydroPoint:undefined,inertiaMeasured: request.inertiaMeasured });
   // Different observation windows or boundaries must never compare as one protocol.
-  const recordedProtocol = {...physicalProtocol,observation:{durationS:pkg.manifest.numerics.durationS,averaging:'final-half-after-warmup'},fidelity,exactDomain:{minM:pkg.manifest.domain.minM,maxM:pkg.manifest.domain.maxM}};
+  const recordedProtocol = {...physicalProtocol,observation:{durationS:pkg.manifest.numerics.durationS,averaging:pkg.manifest.condition.kind==='calm'?'after-warmup':'final-half-after-warmup'},fidelity,exactDomain:{minM:pkg.manifest.domain.minM,maxM:pkg.manifest.domain.maxM}};
   protocolHash = await sha256([encoder.encode(canonical(recordedProtocol))]);
   pkg.manifest.protocolKey = protocolHash;
   request.durationS = pkg.manifest.numerics.durationS;

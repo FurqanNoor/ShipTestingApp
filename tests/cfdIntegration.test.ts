@@ -41,3 +41,19 @@ describe('Wave propagation and motion configuration',()=>{
     const p=extendCaseWithWaves(base(),{kind:'beam-waves',heightM:.01,periodS:1,inertiaMeasured:true,inertiaKgM2:[.0001,.0008,.00085]});expect(p.manifest.mode).toBe('free-motion');expect(p.manifest.motion?.degreesOfFreedom).toEqual(['heave-Z','roll-X']);expect(String(p.files['constant/dynamicMeshDict'])).toContain('mass 0.23952');expect(String(p.files['system/controlDict'])).toContain('angleFormat radians');expect(String(p.files['0/U'])).toContain('movingWallVelocity');
   });
 });
+
+describe('Calm towing outlet',()=>{
+  it('uses a mass-conserving outlet with a wake absorber, and wave cases drop the absorber',()=>{
+    const calm=base(),f=(n:string)=>String(calm.files[n]);
+    expect(f('0/U')).toMatch(/outlet \{ type outletPhaseMeanVelocity; Umean [0-9.]+; alpha alpha\.water;/);
+    expect(f('0/alpha.water')).toMatch(/outlet \{ type variableHeightFlowRate; lowerBound 0; upperBound 1;/);
+    expect(f('0/p_rgh')).toMatch(/outlet \{ type zeroGradient; \}/);
+    expect(f('system/fvOptions')).toMatch(/calmOutletAbsorber[\s\S]*acousticDampingSource[\s\S]*URef UTow;/);
+    expect(f('0/UTow')).toMatch(/internalField uniform \(/);
+    expect(f('system/controlDict')).toMatch(/calmTowReference[\s\S]*fields \(UTow\);/);
+    const wave=extendCaseWithWaves(base(),{kind:'beam-waves',heightM:.01,periodS:1,inertiaMeasured:true,inertiaKgM2:[.0001,.0008,.00085]});
+    expect(wave.files['0/UTow']).toBeUndefined();
+    expect(String(wave.files['system/controlDict'])).not.toContain('UTow');
+    expect(String(wave.files['system/fvOptions'])).not.toContain('calmOutletAbsorber');
+  });
+});

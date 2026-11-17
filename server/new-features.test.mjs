@@ -41,7 +41,9 @@ test('estimator reproduces the measured quick calm run and learns from finished 
   assert.ok(Math.abs(predictRun(manifest,{cores:4,calibration:cal}).solveS-540)/540<.02);
   const wave={condition:{kind:'beam-waves'},mesh:{fidelity:'quick',estimatedBaseCells:1e6,finestCellM:.002},numerics:{durationS:10,maxDeltaTS:.006}};
   assert.ok(predictRun(wave,{cores:4,calibration:cal}).solveS<predictRun(wave,{cores:4}).solveS*.6);
-  assert.equal(predictRun(manifest,{cores:16}).solveS/predictRun(manifest,{cores:1}).solveS,16**-PARALLEL_EXPONENT);
+  assert.equal(predictRun(manifest,{cores:8}).solveS/predictRun(manifest,{cores:1}).solveS,8**-PARALLEL_EXPONENT);
+  // More ranks than the memory system can feed do not shorten the prediction.
+  assert.equal(predictRun(manifest,{cores:16}).solveS,predictRun(manifest,{cores:8}).solveS);
   assert.ok(DEFAULTS['calm:quick'].secondsPerCellStep>0);
 });
 
