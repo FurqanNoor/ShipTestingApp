@@ -69,7 +69,13 @@ function publicStudy(record){
   const j=jobs.get(record.activeJobId);
   const eta=queueTimes().get(record.id);if(eta)record.eta=eta;else if(TERMINAL_STUDY.has(record.status))record.eta={remainingS:0,finishAt:null};
   const queuePosition=studyRunner.queuedIds.indexOf(record.id);record.queuePosition=queuePosition>=0?queuePosition+1:null;
-  if(j){record.activeJob={id:j.id,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logTail:j.log.slice(-15)};const condition=record.conditions.find(c=>c.id===j.conditionId);if(condition&&condition.status==='running')condition.stage=`${j.studyPhase}: ${j.stage}`;record.stage=`${condition?.label??'Automatic test'} · ${j.studyPhase}: ${j.stage}`;}
+  if(j){record.activeJob={id:j.id,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logTail:j.log.slice(-15)};const condition=record.conditions.find(c=>c.id===j.conditionId);record.stage=`${condition?.label??'Automatic test'} · ${j.studyPhase}: ${j.stage}`;}
+  // Every running test shows its own job's live stage (on a cluster all of a study's tests run at once).
+  for(const condition of record.conditions){
+    if(condition.status!=='running')continue;
+    const run=[...(condition.runs??[])].reverse().find(r=>r.jobId&&jobs.has(r.jobId)),job=run&&jobs.get(run.jobId);
+    if(job&&!['completed','failed','cancelled'].includes(job.status))condition.stage=`${job.studyPhase}: ${job.stage}${job.progress?.percent>0&&job.progress.percent<100?` (${Math.round(job.progress.percent)}%)`:''}`;
+  }
   return record;
 }
 
