@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hull Test Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <span class="brand-name">Hull Test Bench</span>
+    <span class="brand-sub">Quick preview + local CFD</span>
+  </div>
+  <div class="chips" id="chips" aria-label="Loaded models"></div>
+  <div class="actions">
+    <span class="toast" id="toast" role="status" aria-live="polite"></span>
+    <button class="btn" id="add" type="button">Add STL</button>
+    <input type="file" id="file" accept=".stl,model/stl" multiple hidden>
+    <button class="btn" id="cfd" type="button">OpenFOAM</button>
+    <button class="btn primary" id="excel" type="button">Download Excel</button>
+  </div>
+</header>
+<main class="layout">
+  <section class="stage" id="stage" aria-label="Tank view">
+    <canvas id="view"></canvas>
+    <div class="progress" id="progress" hidden><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="overlay top-left" id="orient"></div>
+    <div class="overlay top-right" id="live" aria-hidden="true"></div>
+    <div class="overlay bottom" id="playbar"></div>
+    <div class="drop" id="drop"><div class="drop-inner">Drop STL files to test them</div></div>
+  </section>
+  <aside class="panel" id="panel" aria-label="Results"></aside>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

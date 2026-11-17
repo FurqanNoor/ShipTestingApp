@@ -1,0 +1,630 @@
+{
+  "id": "7bd9eb1d-0bc9-4083-9c08-1b0dd3796c61",
+  "name": "HTTP end-to-end smoke only",
+  "status": "completed",
+  "stage": "Completed \u2014 convergence and physical validation pending",
+  "createdAt": "2026-11-16T12:12:26.453Z",
+  "updatedAt": "2026-11-16T12:16:31.956Z",
+  "logTail": [
+    "smoothSolver:  Solving for Uz, Initial residual = 0.0003982899022, Final residual = 2.728616606e-10, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 3.787112059e-05, Final residual = 8.780374152e-08, No Iterations 2",
+    "GAMG:  Solving for p_rgh, Initial residual = 1.790785013e-06, Final residual = 6.773337744e-08, No Iterations 1",
+    "time step continuity errors : sum local = 4.228406291e-12, global = -3.408158502e-13, cumulative = 1.181201927e-10",
+    "GAMG:  Solving for p_rgh, Initial residual = 6.589635874e-07, Final residual = 2.911644549e-08, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 2.88366574e-07, Final residual = 1.465107892e-08, No Iterations 1",
+    "time step continuity errors : sum local = 9.1461021e-13, global = -1.265921319e-13, cumulative = 1.179936006e-10",
+    "PIMPLE: iteration 2",
+    "smoothSolver:  Solving for alpha.water, Initial residual = 8.605165901e-08, Final residual = 6.954347852e-13, No Iterations 1",
+    "Phase-1 volume fraction = 0.7576432305  Min(alpha.water) = -1.61056351e-14  Max(alpha.water) = 1.000000276",
+    "MULES: Correcting alpha.water",
+    "MULES: Correcting alpha.water",
+    "Phase-1 volume fraction = 0.7576432305  Min(alpha.water) = -4.23250647e-11  Max(alpha.water) = 1.000000276",
+    "smoothSolver:  Solving for alpha.water, Initial residual = 7.919342882e-08, Final residual = 8.587671525e-13, No Iterations 1",
+    "Phase-1 volume fraction = 0.7576432049  Min(alpha.water) = -1.597575915e-14  Max(alpha.water) = 1.000000277",
+    "MULES: Correcting alpha.water",
+    "MULES: Correcting alpha.water",
+    "Phase-1 volume fraction = 0.7576432049  Min(alpha.water) = -4.267651455e-11  Max(alpha.water) = 1.000000277",
+    "smoothSolver:  Solving for Ux, Initial residual = 8.663230942e-08, Final residual = 1.396833085e-12, No Iterations 1",
+    "smoothSolver:  Solving for Uy, Initial residual = 1.699783023e-06, Final residual = 6.296616628e-11, No Iterations 1",
+    "smoothSolver:  Solving for Uz, Initial residual = 8.53704265e-08, Final residual = 1.687850737e-12, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 5.224214791e-06, Final residual = 1.815962401e-08, No Iterations 2",
+    "GAMG:  Solving for p_rgh, Initial residual = 2.676727246e-07, Final residual = 1.268755541e-08, No Iterations 1",
+    "time step continuity errors : sum local = 7.919772996e-13, global = -1.196122584e-13, cumulative = 1.178739883e-10",
+    "GAMG:  Solving for p_rgh, Initial residual = 1.377734406e-07, Final residual = 6.00794967e-09, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 8.27481723e-08, Final residual = 8.27481723e-08, No Iterations 0",
+    "time step continuity errors : sum local = 5.165219066e-12, global = -6.21637996e-14, cumulative = 1.178118245e-10",
+    "ExecutionTime = 176.71 s  ClockTime = 180 s",
+    "",
+    "forces hullForces write:",
+    "    Sum of forces",
+    "        Total    : (-0.1518648917 4.78807588e-05 2.454454046)",
+    "        Pressure : (-0.1480487119 4.785917578e-05 2.454421641)",
+    "        Viscous  : (-0.003816179735 2.158301954e-08 3.240550412e-05)",
+    "    Sum of moments",
+    "        Total    : (-2.498391422e-07 0.0002013260716 -3.686637683e-06)",
+    "        Pressure : (-2.491890913e-07 0.0001739208478 -3.683535651e-06)",
+    "        Viscous  : (-6.500509498e-10 2.740522379e-05 -3.102032509e-09)",
+    "    writing force and moment files.",
+    "",
+    "Courant Number mean: 0.002051691142 max: 0.06083266715",
+    "Interface Courant Number mean: 3.06038892e-07 max: 0.04754078752",
+    "deltaT = 0.0001666666667",
+    "Time = 0.01",
+    "",
+    "PIMPLE: iteration 1",
+    "smoothSolver:  Solving for alpha.water, Initial residual = 7.918667931e-08, Final residual = 8.674441998e-13, No Iterations 1",
+    "Phase-1 volume fraction = 0.7576431792  Min(alpha.water) = -1.584673361e-14  Max(alpha.water) = 1.000000277",
+    "MULES: Correcting alpha.water",
+    "MULES: Correcting alpha.water",
+    "Phase-1 volume fraction = 0.7576431792  Min(alpha.water) = -4.302800959e-11  Max(alpha.water) = 1.000000277",
+    "smoothSolver:  Solving for alpha.water, Initial residual = 7.917969127e-08, Final residual = 8.762243854e-13, No Iterations 1",
+    "Phase-1 volume fraction = 0.7576431536  Min(alpha.water) = -1.571855641e-14  Max(alpha.water) = 1.000000277",
+    "MULES: Correcting alpha.water",
+    "MULES: Correcting alpha.water",
+    "Phase-1 volume fraction = 0.7576431536  Min(alpha.water) = -4.337667318e-11  Max(alpha.water) = 1.000000277",
+    "smoothSolver:  Solving for Ux, Initial residual = 0.0003824742818, Final residual = 3.123624844e-10, No Iterations 1",
+    "smoothSolver:  Solving for Uy, Initial residual = 0.002410696221, Final residual = 7.635895838e-13, No Iterations 2",
+    "smoothSolver:  Solving for Uz, Initial residual = 0.0003905162564, Final residual = 2.654502847e-10, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 3.776896952e-05, Final residual = 8.49920864e-08, No Iterations 2",
+    "GAMG:  Solving for p_rgh, Initial residual = 1.821612072e-06, Final residual = 5.918183695e-08, No Iterations 1",
+    "time step continuity errors : sum local = 3.693500339e-12, global = -2.837188982e-13, cumulative = 1.175281056e-10",
+    "GAMG:  Solving for p_rgh, Initial residual = 6.960604518e-07, Final residual = 3.09902378e-08, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 3.196032111e-07, Final residual = 1.633050857e-08, No Iterations 1",
+    "time step continuity errors : sum local = 1.019160682e-12, global = -1.068970778e-13, cumulative = 1.174212086e-10",
+    "PIMPLE: iteration 2",
+    "smoothSolver:  Solving for alpha.water, Initial residual = 8.651719284e-08, Final residual = 6.994689613e-13, No Iterations 1",
+    "Phase-1 volume fraction = 0.7576431788  Min(alpha.water) = -1.584667874e-14  Max(alpha.water) = 1.000000278",
+    "MULES: Correcting alpha.water",
+    "MULES: Correcting alpha.water",
+    "Phase-1 volume fraction = 0.7576431788  Min(alpha.water) = -4.175450024e-11  Max(alpha.water) = 1.000000278",
+    "smoothSolver:  Solving for alpha.water, Initial residual = 7.964608828e-08, Final residual = 8.719623887e-13, No Iterations 1",
+    "Phase-1 volume fraction = 0.7576431527  Min(alpha.water) = -1.571836754e-14  Max(alpha.water) = 1.000000279",
+    "MULES: Correcting alpha.water",
+    "MULES: Correcting alpha.water",
+    "Phase-1 volume fraction = 0.7576431527  Min(alpha.water) = -4.209754405e-11  Max(alpha.water) = 1.000000279",
+    "smoothSolver:  Solving for Ux, Initial residual = 8.498879017e-08, Final residual = 1.375666291e-12, No Iterations 1",
+    "smoothSolver:  Solving for Uy, Initial residual = 1.686030464e-06, Final residual = 6.276207298e-11, No Iterations 1",
+    "smoothSolver:  Solving for Uz, Initial residual = 8.375316122e-08, Final residual = 1.64628095e-12, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 5.323098621e-06, Final residual = 1.824639475e-08, No Iterations 2",
+    "GAMG:  Solving for p_rgh, Initial residual = 2.858526539e-07, Final residual = 1.074086464e-08, No Iterations 1",
+    "time step continuity errors : sum local = 6.702723547e-13, global = -1.069801674e-13, cumulative = 1.173142284e-10",
+    "GAMG:  Solving for p_rgh, Initial residual = 1.463298083e-07, Final residual = 6.747822431e-09, No Iterations 1",
+    "GAMG:  Solving for p_rgh, Initial residual = 9.396923499e-08, Final residual = 9.396923499e-08, No Iterations 0",
+    "time step continuity errors : sum local = 5.863995158e-12, global = -6.301077926e-14, cumulative = 1.172512176e-10",
+    "ExecutionTime = 182.08 s  ClockTime = 186 s",
+    "",
+    "forces hullForces write:",
+    "    Sum of forces",
+    "        Total    : (-0.1514823997 4.656859987e-05 2.454179761)",
+    "        Pressure : (-0.147668493 4.654653681e-05 2.454146724)",
+    "        Viscous  : (-0.003813906727 2.206305991e-08 3.303719002e-05)",
+    "    Sum of moments",
+    "        Total    : (-2.39360111e-07 0.0002404624878 -3.587081096e-06)",
+    "        Pressure : (-2.387044553e-07 0.0002130987449 -3.583953428e-06)",
+    "        Viscous  : (-6.556557597e-10 2.736374282e-05 -3.127667944e-09)",
+    "    writing force and moment files.",
+    "",
+    "End",
+    ""
+  ],
+  "error": null,
+  "result": {
+    "schemaVersion": 1,
+    "source": "OpenFOAM",
+    "status": "incomplete-unverified",
+    "caseId": "7bd9eb1d-0bc9-4083-9c08-1b0dd3796c61",
+    "geometryHash": "d162a44707e813e5d0e2eea68c5adcfb19964c15d4a1979be08afc77771d42c0",
+    "protocolHash": "53b4d4c07b80ad907a5acca1d3c1f935457c69d2db6895d9d62785d57e83e80a",
+    "manifest": {
+      "schemaVersion": 1,
+      "caseId": "7bd9eb1d-0bc9-4083-9c08-1b0dd3796c61",
+      "sourceHash": "d162a44707e813e5d0e2eea68c5adcfb19964c15d4a1979be08afc77771d42c0",
+      "protocolKey": "53b4d4c07b80ad907a5acca1d3c1f935457c69d2db6895d9d62785d57e83e80a",
+      "units": "SI",
+      "solver": {
+        "distribution": "OpenCFD",
+        "version": "2312",
+        "application": "interFoam",
+        "image": "opencfd/openfoam-run:2312",
+        "imageDigest": "sha256:8d411a033af4a841c98ccaab7a49407812a6d78ba22e501fa1c92b2038d39a76"
+      },
+      "mode": "fixed-resistance",
+      "condition": {
+        "kind": "calm"
+      },
+      "geometry": {
+        "kind": "sealed-envelope",
+        "triangleCount": 12,
+        "translationM": [
+          0,
+          0,
+          -0.020000000000000004
+        ],
+        "minM": [
+          0,
+          -0.03,
+          -0.020000000000000004
+        ],
+        "maxM": [
+          0.2,
+          0.03,
+          0.019999999999999997
+        ],
+        "minimumWallThicknessM": null,
+        "dryCavityInitialised": false,
+        "watertightPreflight": true
+      },
+      "load": {
+        "massKg": 0.23952,
+        "draftM": 0.020000000000000004,
+        "cgM": [
+          0.1,
+          0,
+          0.015
+        ],
+        "cgMeasured": true,
+        "solverCgM": [
+          0.1,
+          0,
+          -0.0050000000000000044
+        ]
+      },
+      "speedMps": 0.3,
+      "physics": {
+        "densityWaterKgM3": 998,
+        "densityAirKgM3": 1.2,
+        "nuWaterM2S": 1.004e-06,
+        "nuAirM2S": 1.5e-05,
+        "surfaceTensionNpm": 0.072,
+        "gravityMps2": 9.81,
+        "flowModel": "laminar",
+        "contactAngleAssumptionDeg": 90
+      },
+      "domain": {
+        "scale": 1,
+        "minM": [
+          -1,
+          -0.6300000000000001,
+          -0.6200000000000001
+        ],
+        "maxM": [
+          0.6000000000000001,
+          0.6300000000000001,
+          0.2
+        ],
+        "upstreamClearanceM": 0.4,
+        "downstreamClearanceM": 1,
+        "sideClearanceM": 0.6000000000000001,
+        "belowKeelClearanceM": 0.6000000000000001,
+        "airClearanceM": 0.18000000000000002,
+        "boundaryIndependent": false
+      },
+      "mesh": {
+        "level": "coarse",
+        "baseCellSizeM": 0.025,
+        "baseCells": [
+          64,
+          51,
+          33
+        ],
+        "estimatedBaseCells": 107712,
+        "surfaceLevels": [
+          2,
+          3
+        ],
+        "finestCellM": 0.003125,
+        "maxCells": 750000,
+        "layers": 0,
+        "wallCellsAtFinest": null,
+        "resolutionVerified": false
+      },
+      "numerics": {
+        "durationS": 0.01,
+        "initialDeltaTS": 0.0002,
+        "maxDeltaTS": 0.0002,
+        "maxCo": 0.25,
+        "maxAlphaCo": 0.25,
+        "writeIntervalS": 0.0005,
+        "recommendedWarmupS": 0.005
+      },
+      "conventions": {
+        "waterlineZ": 0,
+        "flowDirection": [
+          -1,
+          0,
+          0
+        ],
+        "dragFromForce": "negative Fx",
+        "heaveAxis": "+Z",
+        "rollAxis": "+X",
+        "forceFile": "postProcessing/hullForces/0/force.dat"
+      },
+      "verification": {
+        "status": "not-run",
+        "required": [
+          "surfaceCheck: closed, consistently oriented actual solid",
+          "mandatory checkMesh topology/meshQuality safety pass; detailed geometry diagnostics separately reviewed",
+          "finite solver residuals and bounded alpha.water",
+          "final-time completion and force-history stationarity",
+          "mass conservation / flux balance",
+          "mesh, time-step and domain convergence before ranking"
+        ]
+      },
+      "notes": [
+        "Actual CAD surface is used at a fixed measured equilibrium draft. No proxy hull or empirical drag is substituted.",
+        "This fixed-hull case measures towing resistance and total fluid force at a prescribed pose; it cannot calculate free roll or stability response.",
+        "Laminar flow is an explicit baseline for small, untripped models. Transition, roughness and near-wall resolution require sensitivity checks or measurements.",
+        "Water-air surface tension is enabled with a 90-degree implicit wetting assumption. Real printed-material contact angle is unknown.",
+        "The initial domain is a starting proposal only. Side/bottom slip boundaries and outlet can still affect results; numerical domain independence has not been established.",
+        "Coarse mesh is a solver smoke test, not an accuracy certificate. Actual achieved refinement, hull/waterline resolution and refinement convergence must be checked.",
+        "For a printed hull, a separate closed displacement envelope sets the initial cavity phase to air. This envelope is not included in the meshed physical hull.",
+        "No boundary layers are added by this starter case. Finite-volume wall stress and pressure drag require near-wall mesh convergence.",
+        "The selected STL is assumed to be the complete closed water-excluding exterior, not merely printed wall material.",
+        "Face closure and orientation were checked. Full CAD self-intersection certification is outside this browser preflight; the exported surface must also pass OpenFOAM surfaceCheck before meshing.",
+        "Initial draft assumes upright, zero-trim hydrostatic equilibrium. CFD must settle any residual list or trim before force sampling.",
+        "STL geometry does not determine actual mass, centre of gravity or inertia. These must be measured or independently calculated."
+      ]
+    },
+    "hydro": {
+      "massKg": 0.23952,
+      "densityKgM3": 998,
+      "gravityMps2": 9.81,
+      "totalVolumeM3": 0.00047999999999999996,
+      "displacedVolumeM3": 0.00024,
+      "draftM": 0.020000000000000004,
+      "freeboardM": 0.019999999999999997,
+      "buoyancyN": 2.3496912,
+      "gmM": 0.010000000000000009,
+      "centerBuoyancyM": [
+        0.10000000000000003,
+        -7.720352383828258e-19,
+        0.010000000000000005
+      ],
+      "waterplaneAreaM2": 0.012,
+      "waterplaneIxxM4": 3.6000000000000007e-06,
+      "waterplaneCentroidM": [
+        0.09999999999999999,
+        3.764590876685779e-19
+      ],
+      "wettedAreaM2": 0.022400000000000003,
+      "hasOpenRim": false,
+      "lowestRimM": null,
+      "maxSupportedMassKg": 0.47903999999999997,
+      "uprightRollMomentNm": -1.814044405718028e-18,
+      "uprightPitchMomentNm": -6.521703177497784e-17,
+      "freeFloatingAllowed": true,
+      "fixedTrim": true,
+      "flags": [],
+      "warnings": [
+        "Initial draft assumes upright, zero-trim hydrostatic equilibrium. CFD must settle any residual list or trim before force sampling.",
+        "STL geometry does not determine actual mass, centre of gravity or inertia. These must be measured or independently calculated."
+      ]
+    },
+    "forces": {
+      "source": "OpenFOAM",
+      "sourceFile": "postProcessing/hullForces/0/force.dat",
+      "format": "openfoam-v2312-force.dat",
+      "sampleCount": 28,
+      "interpolatedBoundaryCount": 0,
+      "totalSampleCount": 56,
+      "seriesStartTimeS": 0.0001666666667,
+      "seriesEndTimeS": 0.01,
+      "averagingStartTimeS": 0.005,
+      "averagingEndTimeS": 0.01,
+      "averagingDurationS": 0.005,
+      "meanDragN": 0.15840700529416324,
+      "meanPressureDragN": 0.15455621159016317,
+      "meanViscousDragN": 0.003850793703494181,
+      "meanPorousDragN": 0,
+      "meanVerticalForceN": 2.4583779726859123,
+      "minimumDragN": 0.14666771713,
+      "maximumDragN": 0.18067074392,
+      "dragStandardDeviationN": 0.008730666710581704,
+      "meanStandardErrorN": null,
+      "firstHalfMeanDragN": 0.16074379880251766,
+      "secondHalfMeanDragN": 0.15607021178580877,
+      "splitHalfRelativeDrift": 0.029503663730211918,
+      "driftTolerance": 0.02,
+      "driftWithinTolerance": false,
+      "forceSampleIntervalS": {
+        "minimum": 0.00016666666599999928,
+        "maximum": 0.0002500000000000002,
+        "mean": 0.00017878787878727274
+      },
+      "warnings": [
+        "Dimensional force is interpreted in newtons in the configured global frame. Drag is\u2212Fx for+X bow and\u2212X incoming flow.",
+        "The vertical force includes dynamic pressure/viscous effects and must not be labelled pure hydrostatic buoyancy.",
+        "Temporal standard deviation is signal variation, not a confidence bound. Correlation and effective sample size have not been estimated.",
+        "A stable split-window mean is not proof of mesh, time-step, domain convergence or experimental validation.",
+        "Split-window mean drift exceeds2% of the window mean."
+      ],
+      "validation": "unverified"
+    },
+    "motion": null,
+    "quality": {
+      "meshOkay": true,
+      "detailedMeshOkay": false,
+      "completedTime": true,
+      "alphaBounded": true,
+      "residualsFinite": true,
+      "forceHistoryDrift": false,
+      "forceCoverageComplete": true,
+      "timeStepsValid": true,
+      "waveDurationSufficient": null,
+      "convergence": "not-demonstrated",
+      "physicalValidation": "not-performed",
+      "rankable": false
+    },
+    "solverRun": {
+      "application": "interFoam",
+      "solverVersion": "2312",
+      "actualMeshCells": 131396,
+      "lastSolverTimeS": 0.01,
+      "expectedEndTimeS": 0.01,
+      "endMarkerObserved": true,
+      "forceSampleCount": 56,
+      "motionSampleCount": 0,
+      "lastForceTimeS": 0.01,
+      "actualDeltaTS": {
+        "minimum": 0.0001666666667,
+        "maximum": 0.00025,
+        "last": 0.0001666666667,
+        "count": 56
+      },
+      "averagingTargetStartTimeS": 0.005,
+      "alphaObservations": {
+        "minimum": -1.544090551e-09,
+        "maximum": 1.000000279,
+        "minCount": 453,
+        "maxCount": 453,
+        "tolerance": 1e-06
+      },
+      "logCoverage": "complete-file"
+    },
+    "raw": {
+      "files": [
+        "log.checkMesh",
+        "log.checkMeshDetailed",
+        "log.interFoam",
+        "log.setFields",
+        "log.snappyHexMesh",
+        "log.surfaceCheck",
+        "manifest.json",
+        "postProcessing/hullForces/0/force.dat"
+      ],
+      "fileDetails": [
+        {
+          "path": "log.checkMesh",
+          "bytes": 4701,
+          "role": "mesh-quality-log",
+          "truncatedRead": false
+        },
+        {
+          "path": "log.checkMeshDetailed",
+          "bytes": 5093,
+          "role": "additional-geometry-diagnostics",
+          "truncatedRead": false
+        },
+        {
+          "path": "log.interFoam",
+          "bytes": 250488,
+          "role": "solver-log",
+          "truncatedRead": false
+        },
+        {
+          "path": "log.setFields",
+          "bytes": 1508,
+          "role": "stage-log",
+          "truncatedRead": false
+        },
+        {
+          "path": "log.snappyHexMesh",
+          "bytes": 56114,
+          "role": "stage-log",
+          "truncatedRead": false
+        },
+        {
+          "path": "log.surfaceCheck",
+          "bytes": 2447,
+          "role": "stage-log",
+          "truncatedRead": false
+        },
+        {
+          "path": "manifest.json",
+          "bytes": 4988,
+          "role": "manifest",
+          "truncatedRead": false
+        },
+        {
+          "path": "postProcessing/hullForces/0/force.dat",
+          "bytes": 10039,
+          "role": "dimensional-force-history",
+          "truncatedRead": false
+        }
+      ]
+    },
+    "warnings": [
+      "Additional allGeometry diagnostics are absent or contain warnings/failures (including cell concavity). Inspect log.checkMeshDetailed; passing mandatory safety limits does not resolve these diagnostics.",
+      "Dimensional force is interpreted in newtons in the configured global frame. Drag is\u2212Fx for+X bow and\u2212X incoming flow.",
+      "The vertical force includes dynamic pressure/viscous effects and must not be labelled pure hydrostatic buoyancy.",
+      "Temporal standard deviation is signal variation, not a confidence bound. Correlation and effective sample size have not been estimated.",
+      "A stable split-window mean is not proof of mesh, time-step, domain convergence or experimental validation.",
+      "Split-window mean drift exceeds2% of the window mean.",
+      "A completed solver run and finite histories are not experimental validation. Mesh, time-step and domain convergence remain to be demonstrated; this run is not eligible for automatic placement."
+    ],
+    "mesh": {
+      "cells": 131396,
+      "quality": true
+    }
+  },
+  "manifest": {
+    "schemaVersion": 1,
+    "caseId": "7bd9eb1d-0bc9-4083-9c08-1b0dd3796c61",
+    "sourceHash": "d162a44707e813e5d0e2eea68c5adcfb19964c15d4a1979be08afc77771d42c0",
+    "protocolKey": "53b4d4c07b80ad907a5acca1d3c1f935457c69d2db6895d9d62785d57e83e80a",
+    "units": "SI",
+    "solver": {
+      "distribution": "OpenCFD",
+      "version": "2312",
+      "application": "interFoam",
+      "image": "opencfd/openfoam-run:2312",
+      "imageDigest": "sha256:8d411a033af4a841c98ccaab7a49407812a6d78ba22e501fa1c92b2038d39a76"
+    },
+    "mode": "fixed-resistance",
+    "condition": {
+      "kind": "calm"
+    },
+    "geometry": {
+      "kind": "sealed-envelope",
+      "triangleCount": 12,
+      "translationM": [
+        0,
+        0,
+        -0.020000000000000004
+      ],
+      "minM": [
+        0,
+        -0.03,
+        -0.020000000000000004
+      ],
+      "maxM": [
+        0.2,
+        0.03,
+        0.019999999999999997
+      ],
+      "minimumWallThicknessM": null,
+      "dryCavityInitialised": false,
+      "watertightPreflight": true
+    },
+    "load": {
+      "massKg": 0.23952,
+      "draftM": 0.020000000000000004,
+      "cgM": [
+        0.1,
+        0,
+        0.015
+      ],
+      "cgMeasured": true,
+      "solverCgM": [
+        0.1,
+        0,
+        -0.0050000000000000044
+      ]
+    },
+    "speedMps": 0.3,
+    "physics": {
+      "densityWaterKgM3": 998,
+      "densityAirKgM3": 1.2,
+      "nuWaterM2S": 1.004e-06,
+      "nuAirM2S": 1.5e-05,
+      "surfaceTensionNpm": 0.072,
+      "gravityMps2": 9.81,
+      "flowModel": "laminar",
+      "contactAngleAssumptionDeg": 90
+    },
+    "domain": {
+      "scale": 1,
+      "minM": [
+        -1,
+        -0.6300000000000001,
+        -0.6200000000000001
+      ],
+      "maxM": [
+        0.6000000000000001,
+        0.6300000000000001,
+        0.2
+      ],
+      "upstreamClearanceM": 0.4,
+      "downstreamClearanceM": 1,
+      "sideClearanceM": 0.6000000000000001,
+      "belowKeelClearanceM": 0.6000000000000001,
+      "airClearanceM": 0.18000000000000002,
+      "boundaryIndependent": false
+    },
+    "mesh": {
+      "level": "coarse",
+      "baseCellSizeM": 0.025,
+      "baseCells": [
+        64,
+        51,
+        33
+      ],
+      "estimatedBaseCells": 107712,
+      "surfaceLevels": [
+        2,
+        3
+      ],
+      "finestCellM": 0.003125,
+      "maxCells": 750000,
+      "layers": 0,
+      "wallCellsAtFinest": null,
+      "resolutionVerified": false
+    },
+    "numerics": {
+      "durationS": 0.01,
+      "initialDeltaTS": 0.0002,
+      "maxDeltaTS": 0.0002,
+      "maxCo": 0.25,
+      "maxAlphaCo": 0.25,
+      "writeIntervalS": 0.0005,
+      "recommendedWarmupS": 0.005
+    },
+    "conventions": {
+      "waterlineZ": 0,
+      "flowDirection": [
+        -1,
+        0,
+        0
+      ],
+      "dragFromForce": "negative Fx",
+      "heaveAxis": "+Z",
+      "rollAxis": "+X",
+      "forceFile": "postProcessing/hullForces/0/force.dat"
+    },
+    "verification": {
+      "status": "not-run",
+      "required": [
+        "surfaceCheck: closed, consistently oriented actual solid",
+        "mandatory checkMesh topology/meshQuality safety pass; detailed geometry diagnostics separately reviewed",
+        "finite solver residuals and bounded alpha.water",
+        "final-time completion and force-history stationarity",
+        "mass conservation / flux balance",
+        "mesh, time-step and domain convergence before ranking"
+      ]
+    },
+    "notes": [
+      "Actual CAD surface is used at a fixed measured equilibrium draft. No proxy hull or empirical drag is substituted.",
+      "This fixed-hull case measures towing resistance and total fluid force at a prescribed pose; it cannot calculate free roll or stability response.",
+      "Laminar flow is an explicit baseline for small, untripped models. Transition, roughness and near-wall resolution require sensitivity checks or measurements.",
+      "Water-air surface tension is enabled with a 90-degree implicit wetting assumption. Real printed-material contact angle is unknown.",
+      "The initial domain is a starting proposal only. Side/bottom slip boundaries and outlet can still affect results; numerical domain independence has not been established.",
+      "Coarse mesh is a solver smoke test, not an accuracy certificate. Actual achieved refinement, hull/waterline resolution and refinement convergence must be checked.",
+      "For a printed hull, a separate closed displacement envelope sets the initial cavity phase to air. This envelope is not included in the meshed physical hull.",
+      "No boundary layers are added by this starter case. Finite-volume wall stress and pressure drag require near-wall mesh convergence.",
+      "The selected STL is assumed to be the complete closed water-excluding exterior, not merely printed wall material.",
+      "Face closure and orientation were checked. Full CAD self-intersection certification is outside this browser preflight; the exported surface must also pass OpenFOAM surfaceCheck before meshing.",
+      "Initial draft assumes upright, zero-trim hydrostatic equilibrium. CFD must settle any residual list or trim before force sampling.",
+      "STL geometry does not determine actual mass, centre of gravity or inertia. These must be measured or independently calculated."
+    ]
+  },
+  "request": {
+    "name": "HTTP end-to-end smoke only",
+    "geometryMode": "closed-envelope",
+    "mode": "calm",
+    "massKg": 0.23952,
+    "cgM": [
+      0.1,
+      0,
+      0.015
+    ],
+    "measurementsConfirmed": true,
+    "speedMps": 0.3,
+    "inertiaMeasured": false,
+    "mesh": "coarse",
+    "durationS": 0.01,
+    "timeStepS": 0.0002,
+    "maxCo": 0.25,
+    "maxCells": 750000,
+    "domainScale": 1
+  }
+}

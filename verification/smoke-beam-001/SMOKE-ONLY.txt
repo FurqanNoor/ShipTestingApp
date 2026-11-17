@@ -1,0 +1,1 @@
+Native wave boundary and six-DoF initialization/coupling check only. Reuses 131396-cell calm mesh and runs 0.0004s, before wave travel/startup. This cannot provide physical wave response, convergence evidence, or ranking data. The generated production wave mesh and requested duration are deliberately not run in this smoke.

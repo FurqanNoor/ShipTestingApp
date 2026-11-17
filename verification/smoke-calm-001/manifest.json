@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "caseId": "smoke-calm-001",
+  "sourceHash": "d162a44707e813e5d0e2eea68c5adcfb19964c15d4a1979be08afc77771d42c0",
+  "protocolKey": "f1c75dbfcbbe50488f649bf80c94424f71e38f7a8931687c0ffd1767da015f70",
+  "units": "SI",
+  "solver": {
+    "distribution": "OpenCFD",
+    "version": "2312",
+    "application": "interFoam",
+    "image": "opencfd/openfoam-run:2312",
+    "imageDigest": "sha256:8d411a033af4a841c98ccaab7a49407812a6d78ba22e501fa1c92b2038d39a76"
+  },
+  "mode": "fixed-resistance",
+  "condition": {
+    "kind": "calm"
+  },
+  "geometry": {
+    "kind": "sealed-envelope",
+    "triangleCount": 12,
+    "translationM": [
+      0,
+      0,
+      -0.020000000000000004
+    ],
+    "minM": [
+      0,
+      -0.03,
+      -0.020000000000000004
+    ],
+    "maxM": [
+      0.2,
+      0.03,
+      0.019999999999999997
+    ],
+    "minimumWallThicknessM": null,
+    "dryCavityInitialised": false,
+    "watertightPreflight": true
+  },
+  "load": {
+    "massKg": 0.23952,
+    "draftM": 0.020000000000000004,
+    "cgM": [
+      0.1,
+      0,
+      0.015
+    ],
+    "cgMeasured": true,
+    "solverCgM": [
+      0.1,
+      0,
+      -0.0050000000000000044
+    ]
+  },
+  "speedMps": 0.3,
+  "physics": {
+    "densityWaterKgM3": 998,
+    "densityAirKgM3": 1.2,
+    "nuWaterM2S": 0.000001004,
+    "nuAirM2S": 0.000015,
+    "surfaceTensionNpm": 0.072,
+    "gravityMps2": 9.81,
+    "flowModel": "laminar",
+    "contactAngleAssumptionDeg": 90
+  },
+  "domain": {
+    "scale": 1,
+    "minM": [
+      -1,
+      -0.6300000000000001,
+      -0.6200000000000001
+    ],
+    "maxM": [
+      0.6000000000000001,
+      0.6300000000000001,
+      0.2
+    ],
+    "upstreamClearanceM": 0.4,
+    "downstreamClearanceM": 1,
+    "sideClearanceM": 0.6000000000000001,
+    "belowKeelClearanceM": 0.6000000000000001,
+    "airClearanceM": 0.18000000000000002,
+    "boundaryIndependent": false
+  },
+  "mesh": {
+    "level": "coarse",
+    "baseCellSizeM": 0.025,
+    "baseCells": [
+      64,
+      51,
+      33
+    ],
+    "estimatedBaseCells": 107712,
+    "surfaceLevels": [
+      2,
+      3
+    ],
+    "finestCellM": 0.003125,
+    "maxCells": 750000,
+    "layers": 0,
+    "wallCellsAtFinest": null,
+    "resolutionVerified": false
+  },
+  "numerics": {
+    "durationS": 0.01,
+    "initialDeltaTS": 0.0002,
+    "maxDeltaTS": 0.0002,
+    "maxCo": 0.25,
+    "maxAlphaCo": 0.25,
+    "writeIntervalS": 0.0005,
+    "recommendedWarmupS": 0.005
+  },
+  "conventions": {
+    "waterlineZ": 0,
+    "flowDirection": [
+      -1,
+      0,
+      0
+    ],
+    "dragFromForce": "negative Fx",
+    "heaveAxis": "+Z",
+    "rollAxis": "+X",
+    "forceFile": "postProcessing/hullForces/0/force.dat"
+  },
+  "verification": {
+    "status": "not-run",
+    "required": [
+      "surfaceCheck: closed, consistently oriented actual solid",
+      "checkMesh: Mesh OK with no failed topology/geometry checks",
+      "finite solver residuals and bounded alpha.water",
+      "final-time completion and force-history stationarity",
+      "mass conservation / flux balance",
+      "mesh, time-step and domain convergence before ranking"
+    ]
+  },
+  "notes": [
+    "Actual CAD surface is used at a fixed measured equilibrium draft. No proxy hull or empirical drag is substituted.",
+    "This fixed-hull case measures towing resistance and total fluid force at a prescribed pose; it cannot calculate free roll or stability response.",
+    "Laminar flow is an explicit baseline for small, untripped models. Transition, roughness and near-wall resolution require sensitivity checks or measurements.",
+    "Water-air surface tension is enabled with a 90-degree implicit wetting assumption. Real printed-material contact angle is unknown.",
+    "The initial domain is a starting proposal only. Side/bottom slip boundaries and outlet can still affect results; numerical domain independence has not been established.",
+    "Coarse mesh is a solver smoke test, not an accuracy certificate. Actual achieved refinement, hull/waterline resolution and refinement convergence must be checked.",
+    "For a printed hull, a separate closed displacement envelope sets the initial cavity phase to air. This envelope is not included in the meshed physical hull.",
+    "No boundary layers are added by this starter case. Finite-volume wall stress and pressure drag require near-wall mesh convergence.",
+    "The selected STL is assumed to be the complete closed water-excluding exterior, not merely printed wall material.",
+    "Face closure and orientation were checked. Full CAD self-intersection certification is outside this browser preflight; the exported surface must also pass OpenFOAM surfaceCheck before meshing.",
+    "Initial draft assumes upright, zero-trim hydrostatic equilibrium. CFD must settle any residual list or trim before force sampling.",
+    "STL geometry does not determine actual mass, centre of gravity or inertia. These must be measured or independently calculated."
+  ]
+}

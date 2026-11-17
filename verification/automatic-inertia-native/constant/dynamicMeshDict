@@ -1,0 +1,43 @@
+/* Generated for OpenCFD OpenFOAM v2312. SI units. */
+FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    location "constant";
+    object dynamicMeshDict;
+}
+
+dynamicFvMesh dynamicMotionSolverFvMesh;
+motionSolverLibs ("libsixDoFRigidBodyMotion.so");
+motionSolver sixDoFRigidBodyMotion;
+sixDoFRigidBodyMotionCoeffs
+{
+    patches (hull);
+    innerDistance 0.01;
+    outerDistance 0.15;
+    centreOfMass (0.1 0.005 -0.005);
+    orientation (0.939372712847 0 0.342897807455 0 1 0 -0.342897807455 0 0.939372712847);
+    initialOrientation (0.939372712847 0 0.342897807455 0 1 0 -0.342897807455 0 0.939372712847);
+    mass 0.23952;
+    momentOfInertia (0.000175299826024 0.0008 0.000774700173976);
+    rho rho;
+    report yes;
+    accelerationRelaxation 0.7;
+    accelerationDamping 1;
+    solver { type Newmark; }
+    constraints
+    {
+        heaveOnly
+        {
+            sixDoFRigidBodyMotionConstraint line;
+            centreOfRotation (0.1 0.005 -0.005);
+            direction (0 0 1);
+        }
+        rollOnly
+        {
+            sixDoFRigidBodyMotionConstraint axis;
+            axis (1 0 0);
+        }
+    }
+}

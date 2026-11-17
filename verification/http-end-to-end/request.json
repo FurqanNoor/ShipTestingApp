@@ -1,0 +1,71 @@
+{
+  "name": "HTTP end-to-end smoke only",
+  "geometryMode": "closed-envelope",
+  "mode": "calm",
+  "massKg": 0.23952,
+  "cgM": [
+    0.1,
+    0,
+    0.015
+  ],
+  "measurementsConfirmed": true,
+  "speedMps": 0.3,
+  "inertiaMeasured": false,
+  "mesh": "coarse",
+  "durationS": 0.01,
+  "timeStepS": 0.0002,
+  "maxCo": 0.25,
+  "maxCells": 750000,
+  "domainScale": 1,
+  "geometryHash": "d162a44707e813e5d0e2eea68c5adcfb19964c15d4a1979be08afc77771d42c0",
+  "protocolHash": "53b4d4c07b80ad907a5acca1d3c1f935457c69d2db6895d9d62785d57e83e80a",
+  "physicalProtocol": {
+    "schema": 1,
+    "mode": "calm",
+    "massKg": 0.23952,
+    "cgM": [
+      0.1,
+      0,
+      0.015
+    ],
+    "measurementsConfirmed": true,
+    "inertiaMeasured": false,
+    "speedMps": 0.3,
+    "wave": {
+      "kind": "calm"
+    },
+    "physics": {
+      "rhoWaterKgM3": 998,
+      "rhoAirKgM3": 1.2,
+      "nuWaterM2S": 0.000001004,
+      "nuAirM2S": 0.000015,
+      "gravityMps2": 9.81,
+      "sigmaNpm": 0.072,
+      "flow": "laminar",
+      "contactAngleDeg": 90
+    },
+    "domain": {
+      "scale": 1,
+      "upstreamLengths": 2,
+      "downstreamLengths": 5,
+      "sideLengths": 3,
+      "belowKeelLengths": 3
+    },
+    "observation": {
+      "durationS": 0.01,
+      "averaging": "final-half-after-warmup"
+    },
+    "exactDomain": {
+      "minM": [
+        -1,
+        -0.6300000000000001,
+        -0.6200000000000001
+      ],
+      "maxM": [
+        0.6000000000000001,
+        0.6300000000000001,
+        0.2
+      ]
+    }
+  }
+}

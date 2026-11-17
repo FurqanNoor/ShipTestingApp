@@ -1,0 +1,30 @@
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.6051012916  Min(alpha.water) = 0  Max(alpha.water) = 1.000011759
+smoothSolver:  Solving for Uy, Initial residual = 0.01166248604, Final residual = 1.220853567e-10, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.02205248392, Final residual = 5.226606465e-10, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 0.03037671797, Final residual = 5.273377601e-05, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 5.290596661e-05, Final residual = 4.501698184e-07, No Iterations 3
+time step continuity errors : sum local = 9.458364307e-09, global = -2.546771193e-09, cumulative = 6.064500851e-07
+GAMG:  Solving for p_rgh, Initial residual = 0.00114236051, Final residual = 4.482370998e-06, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 4.490226749e-06, Final residual = 9.312998741e-08, No Iterations 3
+time step continuity errors : sum local = 1.950988394e-09, global = -4.421592264e-10, cumulative = 6.060079259e-07
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.water, Initial residual = 0.0001365429671, Final residual = 7.07405131e-12, No Iterations 2
+Phase-1 volume fraction = 0.6051012916  Min(alpha.water) = 0  Max(alpha.water) = 1.000011765
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.6051012916  Min(alpha.water) = 0  Max(alpha.water) = 1.000011765
+smoothSolver:  Solving for Uy, Initial residual = 5.253670049e-05, Final residual = 8.506925641e-09, No Iterations 1
+smoothSolver:  Solving for Uz, Initial residual = 6.624930326e-05, Final residual = 1.127542204e-11, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 0.001543839969, Final residual = 2.393332533e-06, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 2.393141139e-06, Final residual = 5.225379077e-08, No Iterations 3
+time step continuity errors : sum local = 1.092139994e-09, global = -1.64047961e-10, cumulative = 6.05843878e-07
+GAMG:  Solving for p_rgh, Initial residual = 4.170500758e-05, Final residual = 1.622282937e-07, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 1.622400627e-07, Final residual = 3.078775132e-08, No Iterations 1
+time step continuity errors : sum local = 6.428683736e-10, global = -3.289881095e-10, cumulative = 6.055148898e-07
+ExecutionTime = 98.17 s  ClockTime = 149 s
+
+waveTarget: set all 3009 values (field: UWave)
+
+End
+

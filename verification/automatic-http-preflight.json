@@ -1,0 +1,18 @@
+{
+  "version": "1.3.0",
+  "passed": true,
+  "test": "Actual local HTTP automatic-study preflight and native motion parsing",
+  "studyId": "fd401391-86a9-431b-a793-7b5651e56444",
+  "conditions": 12,
+  "blockedConditions": 12,
+  "nativeSolvesLaunched": 0,
+  "newCaseJobs": 0,
+  "downloadJson": true,
+  "crossOriginRejected": true,
+  "nativeBodyOrientationRemoved": true,
+  "parsedNativeRollDeg": [
+    -0.00003611451222954075,
+    -0.0002495769523592397
+  ],
+  "physicalAccuracyValidated": false
+}

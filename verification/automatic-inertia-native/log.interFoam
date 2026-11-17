@@ -1,0 +1,264 @@
+/*---------------------------------------------------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2312                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+Build  : _c39a0f64-20231220 OPENFOAM=2312 version=2312
+Arch   : "LSB;label=32;scalar=64"
+Exec   : interFoam
+Date   : Nov 16 2026
+Time   : 13:41:36
+Host   : d81ad4e4e46a
+PID    : 471
+I/O    : uncollated
+Case   : /case
+nProcs : 1
+trapFpe: Floating point exception trapping enabled (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 5, maxFileModificationPolls 20)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Create mesh for time = 0
+
+Selecting dynamicFvMesh dynamicMotionSolverFvMesh
+Selecting motion solver: sixDoFRigidBodyMotion
+Applying motion to entire mesh
+Selecting sixDoFSolver Newmark
+Translational constraint tensor (0 0 0 0 0 0 0 0 1)
+Rotational constraint tensor (1 0 0 0 0 0 0 0 0)
+
+PIMPLE: no residual control data found. Calculations will employ 2 corrector loops
+
+Reading field p_rgh
+
+Reading field U
+
+Reading/calculating face flux field phi
+
+Reading transportProperties
+
+Selecting incompressible transport model Newtonian
+Selecting incompressible transport model Newtonian
+Selecting turbulence model type laminar
+Selecting laminar stress model Stokes
+
+Reading g
+
+Reading hRef
+Calculating field g.h
+
+No MRF models present
+
+No finite volume options present
+DICPCG:  Solving for pcorr, Initial residual = 0, Final residual = 0, No Iterations 0
+DICPCG:  Solving for pcorr, Initial residual = 0, Final residual = 0, No Iterations 0
+time step continuity errors : sum local = 0, global = 0, cumulative = 0
+Constructing face velocity Uf
+
+Courant Number mean: 0 max: 0
+
+Starting time loop
+
+forces hullForces:
+    p: p
+    U: U
+    rho: rho
+    Not including porosity effects
+
+Courant Number mean: 0 max: 0
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.0002
+Time = 0.0002
+
+PIMPLE: iteration 1
+forces forces:
+    rho: rho
+    Not including porosity effects
+
+6-DoF rigid body motion
+    Centre of rotation: (0.1 0.005 -0.004999999882)
+    Centre of mass: (0.1 0.005 -0.004999999882)
+    Orientation: (0.9393727128 -2.161343674e-07 0.3428978075 0 1 6.303171462e-07 -0.3428978075 -5.921027275e-07 0.9393727128)
+    Linear velocity: (0 0 1.179529817e-06)
+    Angular velocity: (-0.005921027275 -0 0.002161343674)
+Selecting waveModel shallowWaterAbsorption
+Wave model: patch port
+    Type : shallowWaterAbsorption
+    Velocity field name : U
+    Phase fraction field name : alpha.water
+    Transformation from local to global system : (-0 -1 -0 1 -0 0 -0 -0 1)
+    Number of paddles: 1
+    Reference water depth : 0.62
+    Active absorption: 1
+Updating shallowWaterAbsorption wave model for patch port
+Selecting waveModel StokesI
+Wave model: patch starboard
+    Type : StokesI
+    Velocity field name : U
+    Phase fraction field name : alpha.water
+    Transformation from local to global system : (-0 1 -0 -1 -0 -0 -0 -0 1)
+    Number of paddles: 1
+    Reference water depth : 0.62
+    Active absorption: 1
+    Ramp time : 3
+    Wave height : 0.01
+    Wave angle  : 0
+    Wave period : 1
+    Wave length : 1.541507177
+    Wave phase : 0
+    Wave type: Intermediate
+Updating StokesI wave model for patch starboard
+DICPCG:  Solving for pcorr, Initial residual = 1, Final residual = 8.780697047e-09, No Iterations 138
+DICPCG:  Solving for pcorr, Initial residual = 0.0006961129684, Final residual = 9.430720293e-09, No Iterations 83
+time step continuity errors : sum local = 5.541580349e-13, global = 3.063182036e-14, cumulative = 3.063182036e-14
+smoothSolver:  Solving for alpha.water, Initial residual = 7.400469976e-07, Final residual = 1.279008607e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576453404  Min(alpha.water) = 0  Max(alpha.water) = 1.000000001
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576453404  Min(alpha.water) = -6.21470129e-20  Max(alpha.water) = 1.000000001
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for alpha.water, Initial residual = 7.400490788e-07, Final residual = 1.271082824e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576459193  Min(alpha.water) = -3.966449091e-50  Max(alpha.water) = 1.000000002
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576459193  Min(alpha.water) = -1.854432762e-20  Max(alpha.water) = 1.000000002
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for Ux, Initial residual = 1, Final residual = 4.296323516e-13, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 1, Final residual = 2.141187811e-09, No Iterations 1
+smoothSolver:  Solving for Uz, Initial residual = 1, Final residual = 7.053491907e-09, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 1, Final residual = 0.00594298724, No Iterations 3
+GAMG:  Solving for p_rgh, Initial residual = 1.124463333e-05, Final residual = 6.060755744e-08, No Iterations 7
+time step continuity errors : sum local = 1.019655028e-09, global = -4.92766196e-10, cumulative = -4.927355642e-10
+GAMG:  Solving for p_rgh, Initial residual = 1.786096601e-06, Final residual = 6.204696296e-08, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 2.355200141e-07, Final residual = 3.085661481e-08, No Iterations 1
+time step continuity errors : sum local = 5.905333781e-10, global = -1.029068013e-10, cumulative = -5.956423655e-10
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.water, Initial residual = 7.432180416e-07, Final residual = 1.760637225e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576453412  Min(alpha.water) = -2.685380237e-51  Max(alpha.water) = 1.000000282
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576453412  Min(alpha.water) = -2.643666738e-21  Max(alpha.water) = 1.000000282
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for alpha.water, Initial residual = 7.414299901e-07, Final residual = 2.442465816e-16, No Iterations 1
+Phase-1 volume fraction = 0.757645921  Min(alpha.water) = -7.641138894e-51  Max(alpha.water) = 1.000000563
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.757645921  Min(alpha.water) = -5.535958662e-21  Max(alpha.water) = 1.000000563
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for Ux, Initial residual = 0.0003896509576, Final residual = 1.558996334e-12, No Iterations 1
+smoothSolver:  Solving for Uy, Initial residual = 3.527928919e-06, Final residual = 8.643810147e-15, No Iterations 1
+smoothSolver:  Solving for Uz, Initial residual = 4.330003511e-06, Final residual = 2.950129853e-14, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 1.150927282e-06, Final residual = 7.596912165e-08, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 1.130539757e-07, Final residual = 3.511557217e-08, No Iterations 1
+time step continuity errors : sum local = 6.727095123e-10, global = -2.931504998e-10, cumulative = -8.887928653e-10
+GAMG:  Solving for p_rgh, Initial residual = 5.557406753e-08, Final residual = 5.557406753e-08, No Iterations 0
+GAMG:  Solving for p_rgh, Initial residual = 5.557406753e-08, Final residual = 5.557406753e-08, No Iterations 0
+time step continuity errors : sum local = 1.065082119e-09, global = -2.930571484e-10, cumulative = -1.181850014e-09
+ExecutionTime = 13.94 s  ClockTime = 20 s
+
+forces hullForces write:
+    Sum of forces
+        Total    : (0.0003621014544 -0.0008668796428 8.914997372)
+        Pressure : (0.0003622559859 -0.000867202441 8.914971949)
+        Viscous  : (-1.545314734e-07 3.227981407e-07 2.542308488e-05)
+    Sum of moments
+        Total    : (-0.0441024862 -0.0002410082747 -0.0006380695285)
+        Pressure : (-0.04410238767 -0.0002410096153 -0.0006379964779)
+        Viscous  : (-9.853047628e-08 1.340631699e-09 -7.305055694e-08)
+    writing force and moment files.
+
+Courant Number mean: 3.678394328e-05 max: 0.001654985012
+Interface Courant Number mean: 0 max: 0
+deltaT = 0.0002
+Time = 0.0004
+
+PIMPLE: iteration 1
+forces forces:
+    rho: rho
+    Not including porosity effects
+
+6-DoF rigid body motion
+    Centre of rotation: (0.1 0.005 -0.004999807621)
+    Centre of mass: (0.1 0.005 -0.004999807621)
+    Orientation: (0.9393727128 -1.493642123e-06 0.3428978075 0 1 4.355939556e-06 -0.3428978075 -4.091850758e-06 0.9393727128)
+    Linear velocity: (0 0 0.001921431322)
+    Angular velocity: (-0.02907645302 -0 0.01061373388)
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+DICPCG:  Solving for pcorr, Initial residual = 1, Final residual = 7.564961949e-09, No Iterations 131
+DICPCG:  Solving for pcorr, Initial residual = 0.000139777843, Final residual = 7.746580413e-09, No Iterations 52
+time step continuity errors : sum local = 1.553771005e-13, global = -3.121235954e-14, cumulative = -1.181881226e-09
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for alpha.water, Initial residual = 7.363491166e-07, Final residual = 2.364772512e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576465016  Min(alpha.water) = 0  Max(alpha.water) = 1.000000563
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576465016  Min(alpha.water) = -2.294903719e-20  Max(alpha.water) = 1.000000563
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for alpha.water, Initial residual = 7.363517645e-07, Final residual = 2.370320498e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576470823  Min(alpha.water) = 0  Max(alpha.water) = 1.000000563
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576470823  Min(alpha.water) = -2.772350413e-20  Max(alpha.water) = 1.000000563
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for Ux, Initial residual = 0.3395606087, Final residual = 2.665692714e-10, No Iterations 1
+smoothSolver:  Solving for Uy, Initial residual = 0.3333315939, Final residual = 8.159456317e-11, No Iterations 1
+smoothSolver:  Solving for Uz, Initial residual = 0.5800636336, Final residual = 1.442059857e-10, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 7.157529699e-05, Final residual = 4.900631038e-07, No Iterations 7
+GAMG:  Solving for p_rgh, Initial residual = 0.0001075564853, Final residual = 6.050841519e-07, No Iterations 5
+time step continuity errors : sum local = 2.427842424e-10, global = 1.077984191e-10, cumulative = -1.074082807e-09
+GAMG:  Solving for p_rgh, Initial residual = 8.651840752e-05, Final residual = 5.282766548e-07, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 4.439821695e-06, Final residual = 5.502710917e-08, No Iterations 3
+time step continuity errors : sum local = 1.55028747e-11, global = 2.009794546e-12, cumulative = -1.072073012e-09
+PIMPLE: iteration 2
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for alpha.water, Initial residual = 7.345386328e-07, Final residual = 2.282828115e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576465032  Min(alpha.water) = 0  Max(alpha.water) = 1.000000561
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576465032  Min(alpha.water) = -2.399507985e-20  Max(alpha.water) = 1.000000561
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for alpha.water, Initial residual = 7.383374415e-07, Final residual = 2.272641704e-16, No Iterations 1
+Phase-1 volume fraction = 0.7576470855  Min(alpha.water) = 0  Max(alpha.water) = 1.000000559
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.7576470855  Min(alpha.water) = -2.889674902e-20  Max(alpha.water) = 1.000000559
+Updating shallowWaterAbsorption wave model for patch port
+Updating StokesI wave model for patch starboard
+smoothSolver:  Solving for Ux, Initial residual = 3.140918037e-05, Final residual = 2.209134515e-13, No Iterations 1
+smoothSolver:  Solving for Uy, Initial residual = 2.255058385e-07, Final residual = 8.88595641e-16, No Iterations 1
+smoothSolver:  Solving for Uz, Initial residual = 4.060045318e-07, Final residual = 2.343995108e-15, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 5.011369506e-06, Final residual = 4.600526637e-08, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 7.739289778e-07, Final residual = 3.923833467e-08, No Iterations 1
+time step continuity errors : sum local = 1.101857315e-11, global = 2.024794557e-12, cumulative = -1.070048218e-09
+GAMG:  Solving for p_rgh, Initial residual = 4.24496174e-07, Final residual = 2.134279624e-08, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 2.592261696e-07, Final residual = 1.207636955e-08, No Iterations 1
+time step continuity errors : sum local = 3.390452504e-12, global = 6.041523089e-13, cumulative = -1.069444066e-09
+ExecutionTime = 24.6 s  ClockTime = 32 s
+
+forces hullForces write:
+    Sum of forces
+        Total    : (-0.001449052557 1.377235576e-05 1.074055993)
+        Pressure : (-0.001448571693 1.180322362e-05 1.074046283)
+        Viscous  : (-4.80863385e-07 1.969132143e-06 9.710098975e-06)
+    Sum of moments
+        Total    : (-0.003133973405 -4.5568633e-05 -0.003475992207)
+        Pressure : (-0.003134092599 -4.556732857e-05 -0.003475559337)
+        Viscous  : (1.191936492e-07 -1.30442502e-09 -4.32870556e-07)
+    writing force and moment files.
+
+End
+

@@ -1,0 +1,65 @@
+
+> hull-test-bench@1.3.0 test
+> vitest run
+
+
+ RUN  v2.1.9 /workspace/work/hull-test-bench-openfoam
+
+ ✓ tests/cfdResults.test.ts (28 tests) 133ms
+ ✓ tests/cfdCase.test.ts (14 tests) 138ms
+ ✓ tests/cfdMassProperties.test.ts (16 tests) 188ms
+ ✓ tests/cfdHydro.test.ts (9 tests) 63ms
+ ✓ tests/cfdAutomaticInertia.test.ts (13 tests) 140ms
+ ✓ tests/cfdUiData.test.ts (24 tests) 211ms
+ ✓ tests/cfdGeometry.test.ts (15 tests) 286ms
+ ✓ tests/cfdCgProvenance.test.ts (14 tests) 331ms
+ ✓ tests/cfdMotionOrientation.test.ts (13 tests) 18ms
+ ✓ tests/cfdAutomatic.test.ts (13 tests) 115ms
+ ✓ tests/cfdEquilibrium.test.ts (6 tests) 208ms
+ ✓ tests/cfdIntegration.test.ts (13 tests) 476ms
+ ✓ tests/cfdAutomaticUi.test.ts (5 tests) 116ms
+ ✓ tests/cfdAutomaticIntegration.test.ts (6 tests) 243ms
+stdout | tests/engine.test.ts > full programme > runs the example hull and ranks models
+analysis ms 6221
+Empty 22.5 g  T 6.87 fb 9.63 GM 6.0 KG 9.7 caps 90 deck 30 Troll 0.366 | calm mN 5.44 fr 4.87 wv 0.55 tr 0.01 CT 0.0116 Fn 0.274 Cb 0.52 Cp 0.70 iE 13 S cm2 58.6
+    Moderate drag mN 5.67 roll 14.3 pitch 1.6 heave mm 1.03 buoy 0.096 0.364 clear 2.9 true false
+    Rough drag mN 6.30 roll 20.9 pitch 4.2 heave mm 3.66 buoy 0.049 0.441 clear -1.1 false false
+    Very rough drag mN 6.89 roll 24.2 pitch 6.4 heave mm 7.00 buoy 0.014 0.495 clear -5.7 false false
+Loaded 28 g  T 8.00 fb 8.50 GM 6.0 KG 9.7 caps 90 deck 27 Troll 0.363 | calm mN 6.22 fr 5.48 wv 0.62 tr 0.12 CT 0.0120 Fn 0.274 Cb 0.52 Cp 0.71 iE 13 S cm2 64.8
+    Moderate drag mN 6.49 roll 13.1 pitch 1.5 heave mm 0.97 buoy 0.138 0.426 clear 1.9 true false
+    Rough drag mN 7.19 roll 20.1 pitch 4.1 heave mm 3.54 buoy 0.080 0.514 clear -2.2 false false
+    Very rough drag mN 7.86 roll 23.5 pitch 6.2 heave mm 6.97 buoy 0.040 0.572 clear -7.2 false false
+Overloaded 33.5 g  T 9.06 fb 7.44 GM 5.7 KG 9.7 caps 90 deck 23 Troll 0.373 | calm mN 6.96 fr 5.94 wv 0.75 tr 0.26 CT 0.0125 Fn 0.274 Cb 0.55 Cp 0.72 iE 18 S cm2 69.9
+    Moderate drag mN 7.25 roll 12.8 pitch 1.4 heave mm 0.92 buoy 0.182 0.485 clear 0.9 true false
+    Rough drag mN 8.02 roll 19.3 pitch 4.0 heave mm 3.45 buoy 0.115 0.582 clear -3.3 false false
+    Very rough drag mN 8.75 roll 22.6 pitch 5.9 heave mm 7.01 buoy 0.086 0.647 clear -8.4 false false
+example {
+  dragMN: 6.918802310035684,
+  rollDeg: 18.992102556082546,
+  maxLoadG: 78.90820177415418,
+  failures: 0
+} [ 219.9999988079071, 37.00000047683716, 16.499999910593033 ] 78.9 box {
+  dragMN: 27.0504231309928,
+  rollDeg: 16.155382882222778,
+  maxLoadG: 480.28750357842046,
+  failures: 0
+}
+
+ ✓ tests/engine.test.ts (14 tests) 12434ms
+   ✓ box hull against hand calculations > righting arm matches the wall-sided formula 957ms
+   ✓ orientation > recovers the ship axes from rotated files 315ms
+   ✓ wave simulation > stays at rest in calm water with buoyancy equal to weight 1802ms
+   ✓ wave simulation > rolls in beam waves, pitches in head waves, more in bigger waves 2782ms
+   ✓ full programme > runs the example hull and ranks models 6229ms
+ ✓ tests/rankingGuards.test.ts (6 tests) 8ms
+
+ Test Files  16 passed (16)
+      Tests  209 passed (209)
+   Start at  15:48:45
+   Duration  14.67s (transform 2.29s, setup 0ms, collect 4.43s, tests 15.11s, environment 5ms, prepare 4.23s)
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice

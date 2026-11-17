@@ -1,0 +1,8 @@
+{
+  "purpose": "Native boundary/model initialization and coupling only",
+  "actualEndTimeS": 0.0004,
+  "meshSource": "reused calm smoke mesh",
+  "actualCells": 131396,
+  "generatedProductionWaveMeshExecuted": false,
+  "physicalWaveResponseEstablished": false
+}

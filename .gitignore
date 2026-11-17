@@ -1,0 +1,9 @@
+node_modules/
+dist/
+cfd-runs/
+server/generated/
+.env
+.env.*
+*.log
+*.tsbuildinfo
+.DS_Store

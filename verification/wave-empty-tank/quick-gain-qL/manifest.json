@@ -1,0 +1,342 @@
+{
+  "schemaVersion": 1,
+  "caseId": "t-250g-low",
+  "sourceHash": "ea84fae747d7943edd54d64f0e37e64e8460fb7520a5014d3e25993462832836",
+  "protocolKey": "bf07cda5df3bdbc199875ab90ef3424c811908a5902d297088a0db1bb2268411",
+  "units": "SI",
+  "solver": {
+    "distribution": "OpenCFD",
+    "version": "2312",
+    "application": "interFoam",
+    "image": "opencfd/openfoam-run:2312",
+    "imageDigest": "sha256:8d411a033af4a841c98ccaab7a49407812a6d78ba22e501fa1c92b2038d39a76"
+  },
+  "mode": "free-motion",
+  "condition": {
+    "kind": "beam-waves",
+    "heightM": 0.003927272727272727,
+    "periodS": 0.3468035860148036,
+    "rampTimeS": 1.0404107580444109,
+    "headingDeg": 90
+  },
+  "geometry": {
+    "kind": "sealed-envelope",
+    "triangleCount": 3504,
+    "translationM": [
+      0,
+      0,
+      -0.03003812973473046
+    ],
+    "minM": [
+      0,
+      -0.039,
+      -0.03003812973473046
+    ],
+    "maxM": [
+      0.21608847518942467,
+      0.039,
+      0.01443893642931015
+    ],
+    "minimumWallThicknessM": null,
+    "dryCavityInitialised": false,
+    "watertightPreflight": true
+  },
+  "load": {
+    "massKg": 0.25,
+    "massSource": "protocol-default",
+    "massMeasured": false,
+    "modelCgM": [
+      0.09892477513936027,
+      1.262233419851039e-10,
+      0.027752999073049824
+    ],
+    "draftM": 0.03003812973473046,
+    "cgM": [
+      0.0989714164640243,
+      5.274765498015888e-11,
+      0.0279729938830957
+    ],
+    "cgMeasured": false,
+    "cgSource": "cad-estimate",
+    "cgAssumptions": [
+      "Constant wall thickness and uniform material density over the physical CAD surface. Thickness magnitude cancels from the estimated CG.",
+      "The supplied hull mass normalizes this assumed distribution; STL alone does not determine real density, infill, ballast, electronics or cargo.",
+      "All unlisted mass is included in the selected hull distribution.",
+      "Ballast and cargo entries are point masses at their specified coordinates; their own dimensions, intrinsic inertia and fluid-displacing surfaces are not modeled."
+    ],
+    "cgAssumptionsConfirmed": true,
+    "solverCgM": [
+      0.0989714164640243,
+      5.274765498015888e-11,
+      -0.002065135851634762
+    ]
+  },
+  "speedMps": 0,
+  "physics": {
+    "densityWaterKgM3": 998,
+    "densityAirKgM3": 1.2,
+    "nuWaterM2S": 0.000001004,
+    "nuAirM2S": 0.000015,
+    "surfaceTensionNpm": 0.072,
+    "gravityMps2": 9.81,
+    "flowModel": "laminar",
+    "contactAngleAssumptionDeg": 90
+  },
+  "domain": {
+    "scale": 1,
+    "minM": [
+      -0.10804423759471234,
+      -0.3347908734542365,
+      -0.1380823673294428
+    ],
+    "maxM": [
+      0.324132712784137,
+      0.4286641913839986,
+      0.21608847518942467
+    ],
+    "upstreamClearanceM": 0.43217695037884934,
+    "downstreamClearanceM": 1.0804423759471233,
+    "sideClearanceM": 0.648265425568274,
+    "belowKeelClearanceM": 0.10804423759471232,
+    "airClearanceM": 0.20164953876011452,
+    "boundaryIndependent": false,
+    "spongeLengthM": 0.2816199537892863
+  },
+  "mesh": {
+    "level": "coarse",
+    "fidelity": "quick",
+    "baseCellSizeM": 0.027011059398678084,
+    "baseCells": [
+      24,
+      68,
+      59
+    ],
+    "estimatedBaseCells": 588444,
+    "surfaceLevels": [
+      0,
+      0
+    ],
+    "finestCellM": 0.0009818181818181818,
+    "maxCells": 5000000,
+    "layers": 0,
+    "wallCellsAtFinest": null,
+    "resolutionVerified": false,
+    "nearHullSpacingM": 0.00229756621241738
+  },
+  "numerics": {
+    "durationS": 6.242464548266465,
+    "initialDeltaTS": 0.001,
+    "maxDeltaTS": 0.003468035860148036,
+    "maxCo": 0.5,
+    "maxAlphaCo": 0.5,
+    "writeIntervalS": 0.31212322741332327,
+    "recommendedWarmupS": 3.468035860148036
+  },
+  "conventions": {
+    "waterlineZ": 0,
+    "flowDirection": [
+      0,
+      0,
+      0
+    ],
+    "dragFromForce": "negative Fx",
+    "heaveAxis": "+Z",
+    "rollAxis": "+X",
+    "forceFile": "postProcessing/hullForces/0/force.dat"
+  },
+  "verification": {
+    "status": "not-run",
+    "required": [
+      "surfaceCheck: closed, consistently oriented actual solid",
+      "mandatory checkMesh topology/meshQuality safety pass; detailed geometry diagnostics separately reviewed",
+      "finite solver residuals and bounded alpha.water",
+      "final-time completion and force-history stationarity",
+      "mass conservation / flux balance",
+      "mesh, time-step and domain convergence before ranking",
+      "empty-tank wave gauges: achieved regular H, T, dispersion and phase",
+      "global inlet/free-surface wave-grid refinement; near-hull refinement alone is insufficient",
+      "incident/reflected-wave separation and absorption/domain sensitivity",
+      "repeat statistics after wave travel, ramp and transient decay",
+      "verify loaded mass, CG and inertia distribution; calm free-floating equilibrium",
+      "mesh-motion quality, heave/roll time-step convergence and complete motion state history"
+    ]
+  },
+  "notes": [
+    "CG is calculated from CAD under explicitly accepted mass-distribution assumptions; it is not measured. Constant wall thickness and uniform material density over the physical CAD surface. Thickness magnitude cancels from the estimated CG. The supplied hull mass normalizes this assumed distribution; STL alone does not determine real density, infill, ballast, electronics or cargo. All unlisted mass is included in the selected hull distribution. Ballast and cargo entries are point masses at their specified coordinates; their own dimensions, intrinsic inertia and fluid-displacing surfaces are not modeled.",
+    "Actual CAD surface is used at a fixed calculated equilibrium draft. No proxy hull or empirical drag is substituted.",
+    "This fixed-hull case measures towing resistance and total fluid force at a prescribed pose; it cannot calculate free roll or stability response.",
+    "Laminar flow is an explicit baseline for small, untripped models. Transition, roughness and near-wall resolution require sensitivity checks or measurements.",
+    "Water-air surface tension is enabled with a 90-degree implicit wetting assumption. Real printed-material contact angle is unknown.",
+    "The initial domain is a starting proposal only. Side/bottom slip boundaries and outlet can still affect results; numerical domain independence has not been established.",
+    "Coarse mesh is a solver smoke test, not an accuracy certificate. Actual achieved refinement, hull/waterline resolution and refinement convergence must be checked.",
+    "QUICK run: shortened observation window and, for waves, a lighter wave grid. Use it to screen designs fast; numbers are rough and not comparable with standard-fidelity runs.",
+    "For a printed hull, a separate closed displacement envelope sets the initial cavity phase to air. This envelope is not included in the meshed physical hull.",
+    "No boundary layers are added by this starter case. Finite-volume wall stress and pressure drag require near-wall mesh convergence.",
+    "Regular Stokes-I waves at zero current only. This is not the original irregular Bretschneider sea, even when a numeric Hs preset is reused as regular height H.",
+    "Native waveVelocity does not add a towing current. Nonzero-speed advancing-wave cases are rejected rather than silently changing the requested physics.",
+    "Native shallow-water active absorption is an initial boundary treatment, not a guarantee of negligible reflection in this domain. Measure reflection using empty-tank gauges and vary boundaries.",
+    "Graded wave background: 588444 cells; 4 vertical cells per height and 20 cells per wavelength before hull refinement. These requested resolutions are starting levels for a global wave propagation convergence study; no achieved-wave validation is implied.",
+    "The complete mass inertia tensor is estimated from CAD and stated payload assumptions, not measured. The only free rotation uses effective axial inertia a^T I a about the longitudinal hull axis; other rotation components are constraint reactions.",
+    "Only heave +Z and rotation about the initial longitudinal hull axis (0.999996622053 0 -0.00259920824204) are free; all other translations and rotations are constrained. No empirical roll damping is imposed: viscous/capillary forces are solved by interFoam. Morphing mesh may fail at large heel and must be quality-checked throughout.",
+    "Force-object moment reference remains the initial CG. sixDoF internally uses its moving centre of rotation; distinguish those references when post-processing moments.",
+    "2 zero-area CAD facets were removed before topology validation.",
+    "2 exactly coincident opposite-facing facets were cancelled as zero-volume internal interfaces before topology validation.",
+    "The selected STL is assumed to be the complete closed water-excluding exterior, not merely printed wall material.",
+    "Face closure and orientation were checked. Full CAD self-intersection certification is outside this browser preflight; the exported surface must also pass OpenFOAM surfaceCheck before meshing.",
+    "STL geometry does not determine actual mass, centre of gravity or inertia. These must be measured or independently calculated.",
+    "Initial dry hydrostatic roll/trim solved from the CAD envelope and stated mass distribution; CB–CG horizontal residual 0.0000434 mm. This does not validate real loading or flooding.",
+    "Centre of gravity was estimated from CAD and the stated mass-distribution assumptions; it was not measured.",
+    "CAD-derived CG and inertia are estimates, not measurements of the loaded physical ship. Check or measure them before using final team placements.",
+    "Every exported exterior facet, including any CAD deck, is treated as an equal-thickness physical wall. Confirm that those surfaces correspond to the real material.",
+    "The estimated inertia has significant off-diagonal products. The principal orientation must accompany its moments for CFD; do not substitute the diagonal or sorted moments as model-axis Ixx/Iyy/Izz.",
+    "Automatic standard comparison: total loads are imposed protocol defaults, not measured ship weights. All mass follows the declared CAD distribution. No unlisted ballast or cargo placement is inferred.",
+    "Initial dry floating roll/trim was solved from the stated CAD mass distribution; the original model remains unchanged. This is a hydrostatic initial pose, not a verified free-motion response."
+  ],
+  "waves": {
+    "model": "StokesI",
+    "heightDefinition": "regular crest-to-trough",
+    "periodDefinition": "still-water regular period",
+    "originalIrregularPresetEquivalent": false,
+    "inletPatch": "starboard",
+    "absorptionPatch": "port",
+    "generation": {
+      "method": "relaxation-zone",
+      "gain": 1.4492753623188408,
+      "lengthM": 0.1877466358595242,
+      "wavelengths": 1,
+      "maxRateS": 90.587086762583,
+      "kinematics": "linear finite-depth (Stokes I)",
+      "rampTimeS": 1.0404107580444109
+    },
+    "sponge": {
+      "lengthM": 0.2816199537892863,
+      "wavelengths": 1.5,
+      "zones": 1,
+      "maxRateS": 36.2348347050332,
+      "minM": [
+        -1.1080442375947124,
+        0.14704423759471233,
+        -1.1380823673294427
+      ],
+      "maxM": [
+        1.3241327127841371,
+        1.4286641913839986,
+        1.2160884751894248
+      ]
+    },
+    "propagationDirection": [
+      0,
+      1,
+      0
+    ],
+    "waveLengthM": 0.1877466358595242,
+    "waterDepthM": 0.1380823673294428,
+    "meanCurrentMps": 0,
+    "boundaryHeightCells": 4,
+    "boundaryWavelengthCells": 20,
+    "backgroundCells": 588444,
+    "freeSurfaceVerticalCells": 16,
+    "waveResolutionVerified": false,
+    "reflectedWaveFraction": null,
+    "sources": [
+      "https://doc.openfoam.com/2312/tools/processing/models/wave-models/regular/rtm/stokesI/",
+      "https://api.openfoam.com/2312/waveVelocityFvPatchVectorField_8C_source.html",
+      "https://api.openfoam.com/2312/waveModel_8C_source.html",
+      "https://api.openfoam.com/2312/StokesIWaveModel_8C_source.html",
+      "https://api.openfoam.com/2312/sixDoFRigidBodyMotionLineConstraint_8C_source.html",
+      "https://api.openfoam.com/2312/sixDoFRigidBodyMotionAxisConstraint_8C_source.html",
+      "https://api.openfoam.com/2312/sixDoFRigidBodyState_8C_source.html"
+    ]
+  },
+  "motion": {
+    "degreesOfFreedom": [
+      "heave-Z",
+      "roll-about-hull-axis"
+    ],
+    "inertiaKgM2": [
+      0.0001917228942297024,
+      0.0009535892792999452,
+      0.001014677788961174
+    ],
+    "inertiaMeasured": false,
+    "inertiaSource": "cad-estimate",
+    "inertiaAssumptions": [
+      "Constant wall thickness and uniform material density over the physical CAD surface. Thickness magnitude cancels from the estimated CG.",
+      "The supplied hull mass normalizes this assumed distribution; STL alone does not determine real density, infill, ballast, electronics or cargo.",
+      "All unlisted mass is included in the selected hull distribution.",
+      "Ballast and cargo entries are point masses at their specified coordinates; their own dimensions, intrinsic inertia and fluid-displacing surfaces are not modeled."
+    ],
+    "initialOrientation": [
+      [
+        0.999996622052552,
+        0,
+        0.0025992082420351996
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        -0.0025992082420351996,
+        0,
+        0.999996622052552
+      ]
+    ],
+    "rollAxis": [
+      0.999996622052552,
+      0,
+      -0.0025992082420351996
+    ],
+    "inertiaTensorKgM2": [
+      [
+        0.00019178389019101365,
+        1.674380978762512e-12,
+        0.000012802965971343127
+      ],
+      [
+        1.6743809787625117e-12,
+        0.0009535892792999452,
+        4.5656912576771756e-14
+      ],
+      [
+        0.000012802965971343127,
+        4.5656912576771756e-14,
+        0.0010146167929998627
+      ]
+    ],
+    "inertiaFrame": "constrained-roll-body-frame",
+    "inertiaProjection": "effective inertia a^T I a for the only free rotation",
+    "effectiveRollInertiaKgM2": 0.0001917228942297024,
+    "principalMomentsKgM2": [
+      0.00019158472913173122,
+      0.0009535892792999452,
+      0.001014815954059145
+    ],
+    "principalOrientation": [
+      [
+        0.9998790296697515,
+        2.177660569296607e-9,
+        0.01555397141170492
+      ],
+      [
+        -2.196139487172566e-9,
+        1,
+        1.1709710449395457e-9
+      ],
+      [
+        -0.015553971411704918,
+        -1.2049880829851264e-9,
+        0.9998790296697515
+      ]
+    ],
+    "initialCentreOfMassM": [
+      0.0989714164640243,
+      5.274765498015888e-11,
+      -0.002065135851634762
+    ],
+    "stateFile": "postProcessing/rigidBodyState/0/sixDoFRigidBodyState.dat",
+    "angles": "radians",
+    "meshMotion": "morphing"
+  }
+}

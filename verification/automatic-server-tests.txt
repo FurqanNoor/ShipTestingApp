@@ -1,0 +1,36 @@
+
+> hull-test-bench@1.3.0 test:server
+> node --test server/*.test.mjs
+
+✔ actual force file fields are parsed without declaring experimental validation (44.49446ms)
+✔ a failed detailed geometry report remains visible even with safety Mesh OK (16.476319ms)
+✔ missing normal solver completion is not promoted to a completed result (21.274366ms)
+✔ missing solver output never falls back to empirical drag (3.782176ms)
+✔ motion RMS comes from the recorded post-startup history and retains its initial orientation inputs (24.312628ms)
+✔ complete genuine-output fixtures can pass declared sensitivity diagnostics without granting physical validation (2.10375ms)
+✔ identical actual cell counts cannot masquerade as three refined meshes (0.822717ms)
+✔ mesh comparisons require recorded matching physical protocol hashes (0.472784ms)
+✔ an inactive halved timestep cap does not pass actual timestep sensitivity (0.283337ms)
+✔ wave comparisons use RMS roll rather than a near-zero mean longitudinal force (0.347132ms)
+✔ unsettled wave response, failed detailed meshes and missing genuine channels remain inconclusive (0.35879ms)
+✔ changed physical observations and failed domain enlargement cannot pass comparison (0.264493ms)
+✔ a blocked fine mesh retains only the available genuine earlier result (1.471507ms)
+✔ runner schedules exactly five distinct numerical cases per condition with bounded common protocol (8.219378ms)
+✔ a condition blocked by preflight does not prevent other conditions from running (2.626706ms)
+✔ cancelling a study cancels its owned active job and schedules no follow-ups (0.804962ms)
+✔ a second study cannot be started while the first one owns execution (1.092671ms)
+✔ restart restores completed outputs and marks unfinished work interrupted without replay (0.777247ms)
+✔ time-weighted motion RMS integrates linear samples exactly and is insensitive to sampling density (0.637617ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 310.31853
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2
+npm notice To update run: npm install -g npm@12.2.2
+npm notice

@@ -1,0 +1,81 @@
+{
+  "test": "Native v2312 constrained-roll tensor/orientation startup",
+  "solver": "OpenCFD OpenFOAM v2312 interFoam",
+  "passed": true,
+  "nativeAxisConstraintFrame": "body",
+  "desiredWorldRollAxis": [
+    0.9393727128473789,
+    0,
+    -0.34289780745545134
+  ],
+  "nativeBodyAxis": [
+    1,
+    0,
+    0
+  ],
+  "initialOrientation": [
+    [
+      0.9393727128473789,
+      0,
+      0.34289780745545134
+    ],
+    [
+      0,
+      1,
+      0
+    ],
+    [
+      -0.34289780745545134,
+      0,
+      0.9393727128473789
+    ]
+  ],
+  "inertiaTensorKgM2": [
+    [
+      0.0001,
+      3e-05,
+      2e-05
+    ],
+    [
+      3e-05,
+      0.0008,
+      4e-05
+    ],
+    [
+      2e-05,
+      4e-05,
+      0.00085
+    ]
+  ],
+  "effectiveRollInertiaKgM2": 0.00017529982602356302,
+  "recordedAngularVelocitiesRadS": [
+    [
+      -0.005921027275,
+      -0.0,
+      0.002161343674
+    ],
+    [
+      -0.02907645302,
+      -0.0,
+      0.01061373388
+    ]
+  ],
+  "relativeCrossProductAlignmentErrors": [
+    6.429283317483129e-12,
+    2.7257412051350452e-11
+  ],
+  "pointsCompared": 145488,
+  "maxFirstStepMeshDisplacementM": 4.8325541898086893e-08,
+  "endTimeS": 0.0004,
+  "recordedMotionSamples": 2,
+  "meshCells": 131396,
+  "nativeSolverNormalCompletion": true,
+  "initialPhysicalCadPosePreserved": true,
+  "physicalHydrodynamicAccuracyValidated": false,
+  "productionWaveMeshRun": false,
+  "limitations": [
+    "Synthetic deliberately off-centre CG creates a startup torque; this is not a real loaded ship.",
+    "Reuses 131396-cell calm mesh; generated global wave mesh is deliberately not run.",
+    "Ends before wave propagation/ramp; not a drag, wave, flooding, convergence or ranking benchmark."
+  ]
+}

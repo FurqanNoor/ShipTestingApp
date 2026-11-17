@@ -1,0 +1,35 @@
+{
+  "massKg": 0.23952,
+  "densityKgM3": 998,
+  "gravityMps2": 9.81,
+  "totalVolumeM3": 0.00047999999999999996,
+  "displacedVolumeM3": 0.00024,
+  "draftM": 0.020000000000000004,
+  "freeboardM": 0.019999999999999997,
+  "buoyancyN": 2.3496912,
+  "gmM": 0.010000000000000009,
+  "centerBuoyancyM": [
+    0.10000000000000003,
+    -7.720352383828258e-19,
+    0.010000000000000005
+  ],
+  "waterplaneAreaM2": 0.012,
+  "waterplaneIxxM4": 0.0000036000000000000007,
+  "waterplaneCentroidM": [
+    0.09999999999999999,
+    3.764590876685779e-19
+  ],
+  "wettedAreaM2": 0.022400000000000003,
+  "hasOpenRim": false,
+  "lowestRimM": null,
+  "maxSupportedMassKg": 0.47903999999999997,
+  "uprightRollMomentNm": -1.814044405718028e-18,
+  "uprightPitchMomentNm": -6.521703177497784e-17,
+  "freeFloatingAllowed": true,
+  "fixedTrim": true,
+  "flags": [],
+  "warnings": [
+    "Initial draft assumes upright, zero-trim hydrostatic equilibrium. CFD must settle any residual list or trim before force sampling.",
+    "STL geometry does not determine actual mass, centre of gravity or inertia. These must be measured or independently calculated."
+  ]
+}

@@ -1,0 +1,40 @@
+smoothSolver:  Solving for Uz, Initial residual = 0.007327102433, Final residual = 7.509384806e-11, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 0.00478539506, Final residual = 2.140271479e-05, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 2.739498945e-05, Final residual = 1.740224783e-07, No Iterations 4
+time step continuity errors : sum local = 3.605743652e-10, global = -5.570242032e-11, cumulative = -4.276676338e-08
+GAMG:  Solving for p_rgh, Initial residual = 4.526360561e-05, Final residual = 1.32860471e-07, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 2.268131537e-06, Final residual = 8.941646032e-08, No Iterations 1
+time step continuity errors : sum local = 1.854697688e-10, global = -1.816095614e-11, cumulative = -4.278492434e-08
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.water, Initial residual = 6.747754873e-06, Final residual = 9.073501045e-10, No Iterations 1
+Phase-1 volume fraction = 0.4633176819  Min(alpha.water) = -4.662917707e-10  Max(alpha.water) = 1.000001922
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.4633176819  Min(alpha.water) = -1.150971887e-05  Max(alpha.water) = 1.000001922
+smoothSolver:  Solving for Ux, Initial residual = 1.327100982e-06, Final residual = 1.470310304e-09, No Iterations 1
+smoothSolver:  Solving for Uy, Initial residual = 4.812262662e-06, Final residual = 4.422606296e-10, No Iterations 1
+smoothSolver:  Solving for Uz, Initial residual = 3.486493197e-06, Final residual = 3.727504923e-10, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 8.989413505e-05, Final residual = 5.16807381e-07, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 2.785407983e-06, Final residual = 4.481216116e-08, No Iterations 2
+time step continuity errors : sum local = 9.295032383e-11, global = -2.852361282e-12, cumulative = -4.27877767e-08
+GAMG:  Solving for p_rgh, Initial residual = 2.250329673e-06, Final residual = 4.746640644e-08, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 1.163044085e-06, Final residual = 2.841160861e-08, No Iterations 1
+time step continuity errors : sum local = 5.893251186e-11, global = -2.4006733e-12, cumulative = -4.279017737e-08
+ExecutionTime = 970.74 s  ClockTime = 979 s
+
+waveTarget: set all 307272 values (field: UWave)
+
+forces hullForces write:
+    Sum of forces
+        Total    : (-5.868245676e-07 0.001008403559 2.456775646)
+        Pressure : (2.171408544e-06 0.001001678707 2.456825577)
+        Viscous  : (-2.758233111e-06 6.724852631e-06 -4.993041395e-05)
+    Sum of moments
+        Total    : (1.015857217e-05 -2.933624183e-06 -6.251954262e-06)
+        Pressure : (9.882889303e-06 -2.909799621e-06 -5.904568164e-06)
+        Viscous  : (2.756828642e-07 -2.382456187e-08 -3.473860984e-07)
+    writing force and moment files.
+
+End
+
+Finalising parallel run

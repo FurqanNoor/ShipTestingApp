@@ -1,0 +1,28 @@
+{
+  "name": "hull-test-bench",
+  "private": true,
+  "version": "1.5.0",
+  "type": "module",
+  "description": "Upload an STL hull, test buoyancy, roll stability and drag at 1:545 model scale, export to Excel.",
+  "scripts": {
+    "dev": "node scripts/build.mjs --serve",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "cfd": "npm run build && npm run build:cfd && node server/cfd-server.mjs",
+    "build:cfd": "node scripts/build-cfd.mjs",
+    "cfd:pull": "node scripts/pull-openfoam.mjs",
+    "test:server": "node --test server/*.test.mjs"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "manifold-3d": "3.5.4",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.169.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.0"
+  }
+}

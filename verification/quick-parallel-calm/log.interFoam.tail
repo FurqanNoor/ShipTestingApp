@@ -1,0 +1,40 @@
+
+Courant Number mean: 0.02145632518 max: 0.7482771559
+Interface Courant Number mean: 0.001152924172 max: 0.5121517746
+deltaT = 0.001593844454
+Time = 4
+
+PIMPLE: iteration 1
+smoothSolver:  Solving for alpha.water, Initial residual = 1.189456305e-05, Final residual = 9.908503784e-09, No Iterations 1
+Phase-1 volume fraction = 0.7554673334  Min(alpha.water) = 0  Max(alpha.water) = 1
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.755467343  Min(alpha.water) = -2.562846139e-11  Max(alpha.water) = 1
+smoothSolver:  Solving for Ux, Initial residual = 0.0001217727197, Final residual = 3.567509934e-11, No Iterations 2
+smoothSolver:  Solving for Uy, Initial residual = 0.001504557781, Final residual = 1.299684998e-09, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.0001888638157, Final residual = 1.02386878e-10, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 0.0008745785142, Final residual = 1.335688858e-06, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 3.463584807e-05, Final residual = 1.671377236e-07, No Iterations 2
+time step continuity errors : sum local = 4.05123111e-10, global = 2.462923277e-10, cumulative = -1.288853444e-08
+GAMG:  Solving for p_rgh, Initial residual = 2.159835591e-05, Final residual = 9.229166249e-08, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 2.549986993e-06, Final residual = 6.528049703e-08, No Iterations 1
+time step continuity errors : sum local = 1.583240371e-10, global = 7.685863424e-11, cumulative = -1.281167581e-08
+GAMG:  Solving for p_rgh, Initial residual = 1.511798057e-06, Final residual = 4.144628937e-08, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 3.685233416e-07, Final residual = 2.391168525e-08, No Iterations 1
+time step continuity errors : sum local = 5.799915428e-11, global = 4.139760756e-11, cumulative = -1.27702782e-08
+ExecutionTime = 1043.46 s  ClockTime = 1081 s
+
+forces hullForces write:
+    Sum of forces
+        Total    : (-0.04436704033 -0.007886335293 2.250657643)
+        Pressure : (-0.04361444041 -0.007850129053 2.250810036)
+        Viscous  : (-0.0007525999178 -3.620623941e-05 -0.0001523933192)
+    Sum of moments
+        Total    : (-2.220124558e-05 -0.0004408252133 -0.0002465754624)
+        Pressure : (-2.203492576e-05 -0.0004471026499 -0.0002474549589)
+        Viscous  : (-1.6631982e-07 6.277436551e-06 8.794964971e-07)
+    writing force and moment files.
+
+End
+
+Finalising parallel run

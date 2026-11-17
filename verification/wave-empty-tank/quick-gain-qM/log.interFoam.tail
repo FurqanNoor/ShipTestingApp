@@ -1,0 +1,30 @@
+GAMG:  Solving for p_rgh, Initial residual = 0.002479430912, Final residual = 1.236774226e-05, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 1.239575512e-05, Final residual = 9.42873531e-08, No Iterations 4
+time step continuity errors : sum local = 2.152952094e-09, global = -3.1817905e-10, cumulative = 2.049283623e-06
+PIMPLE: iteration 2
+smoothSolver:  Solving for alpha.water, Initial residual = 0.0001495794851, Final residual = 3.104356322e-11, No Iterations 2
+Phase-1 volume fraction = 0.4629188238  Min(alpha.water) = 0  Max(alpha.water) = 1.000011587
+MULES: Correcting alpha.water
+MULES: Correcting alpha.water
+Phase-1 volume fraction = 0.4629188238  Min(alpha.water) = 0  Max(alpha.water) = 1.000011587
+smoothSolver:  Solving for Uy, Initial residual = 9.150298051e-05, Final residual = 1.676710155e-11, No Iterations 2
+smoothSolver:  Solving for Uz, Initial residual = 0.000151687148, Final residual = 1.188276932e-10, No Iterations 2
+GAMG:  Solving for p_rgh, Initial residual = 0.003041914303, Final residual = 6.112580511e-06, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 6.121138077e-06, Final residual = 5.707057987e-08, No Iterations 4
+time step continuity errors : sum local = 1.297221764e-09, global = 5.146889161e-10, cumulative = 2.049798312e-06
+GAMG:  Solving for p_rgh, Initial residual = 0.0001262909849, Final residual = 5.354691754e-07, No Iterations 1
+GAMG:  Solving for p_rgh, Initial residual = 5.355021721e-07, Final residual = 8.980325284e-08, No Iterations 1
+time step continuity errors : sum local = 2.040524782e-09, global = -3.075044018e-10, cumulative = 2.049490808e-06
+ExecutionTime = 83.16 s  ClockTime = 126 s
+
+waveTarget: set all 3286 values (field: UWave)
+
+fieldMinMax phaseBounds write:
+    min(alpha.water) = 0 in cell 3237 at location (0.09897141648 -0.3047911139 0.2160884752)
+    max(alpha.water) = 1.000011587 in cell 639 at location (0.09897141648 -0.2161940759 -0.03709458098)
+
+volFieldValue waterVolume write:
+    volIntegrate(region0) of alpha.water = 0.002166672903
+
+End
+

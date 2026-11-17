@@ -1,0 +1,85 @@
+{
+  "name": "Beam setup native coupling smoke only",
+  "geometryMode": "closed-envelope",
+  "mode": "beam-waves",
+  "massKg": 0.23952,
+  "cgM": [
+    0.1,
+    0,
+    0.015
+  ],
+  "measurementsConfirmed": true,
+  "speedMps": 0,
+  "waveHeightM": 0.01,
+  "wavePeriodS": 1,
+  "inertiaMeasured": true,
+  "inertiaKgM2": [
+    0.0001,
+    0.0008,
+    0.00085
+  ],
+  "mesh": "coarse",
+  "durationS": 40,
+  "timeStepS": 0.0002,
+  "maxCo": 0.25,
+  "maxCells": 5000000,
+  "domainScale": 1,
+  "geometryHash": "d162a44707e813e5d0e2eea68c5adcfb19964c15d4a1979be08afc77771d42c0",
+  "protocolHash": "d22bba12e5373d3e96d4d5394ad9bfc534c186804db735fb6850bfb1dc218bcb",
+  "physicalProtocol": {
+    "schema": 1,
+    "mode": "beam-waves",
+    "massKg": 0.23952,
+    "cgM": [
+      0.1,
+      0,
+      0.015
+    ],
+    "measurementsConfirmed": true,
+    "inertiaKgM2": [
+      0.0001,
+      0.0008,
+      0.00085
+    ],
+    "inertiaMeasured": true,
+    "speedMps": 0,
+    "wave": {
+      "kind": "beam-waves",
+      "heightM": 0.01,
+      "periodS": 1
+    },
+    "physics": {
+      "rhoWaterKgM3": 998,
+      "rhoAirKgM3": 1.2,
+      "nuWaterM2S": 0.000001004,
+      "nuAirM2S": 0.000015,
+      "gravityMps2": 9.81,
+      "sigmaNpm": 0.072,
+      "flow": "laminar",
+      "contactAngleDeg": 90
+    },
+    "domain": {
+      "scale": 1,
+      "upstreamLengths": 2,
+      "downstreamLengths": 5,
+      "sideLengths": 3,
+      "belowKeelLengths": 3
+    },
+    "observation": {
+      "durationS": 40,
+      "averaging": "final-half-after-warmup"
+    },
+    "exactDomain": {
+      "minM": [
+        -1,
+        -0.6300000000000001,
+        -0.6200000000000001
+      ],
+      "maxM": [
+        0.6000000000000001,
+        0.6300000000000001,
+        0.2
+      ]
+    }
+  }
+}

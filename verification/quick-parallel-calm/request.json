@@ -1,0 +1,168 @@
+{
+  "name": "barge-200 250 g calm",
+  "geometryMode": "closed-envelope",
+  "mode": "calm",
+  "massKg": 0.25,
+  "cgM": [
+    0.1,
+    0,
+    0.015
+  ],
+  "cgSource": "cad-estimate",
+  "cgEstimate": {
+    "distribution": "shell",
+    "payloads": []
+  },
+  "cgAssumptions": [
+    "Constant wall thickness and uniform material density over the physical CAD surface. Thickness magnitude cancels from the estimated CG.",
+    "The supplied hull mass normalizes this assumed distribution; STL alone does not determine real density, infill, ballast, electronics or cargo.",
+    "All unlisted mass is included in the selected hull distribution.",
+    "Ballast and cargo entries are point masses at their specified coordinates; their own dimensions, intrinsic inertia and fluid-displacing surfaces are not modeled."
+  ],
+  "assumptionsConfirmed": true,
+  "measurementsConfirmed": false,
+  "massSource": "protocol-default",
+  "automation": {
+    "schema": 1,
+    "protocol": "standard-220-v1"
+  },
+  "modelCgM": [
+    0.1,
+    0,
+    0.015
+  ],
+  "floatingPose": {
+    "rollRad": 0,
+    "pitchRad": 0,
+    "rotation": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ],
+    "translationM": [
+      0,
+      0,
+      0
+    ],
+    "residualM": 1.3887841236630545e-17
+  },
+  "speedMps": 0.3,
+  "inertiaMeasured": false,
+  "mesh": "coarse",
+  "fidelity": "quick",
+  "durationS": 4.000000000000001,
+  "timeStepS": 0.001,
+  "maxDeltaTS": 0.004,
+  "maxCo": 0.8,
+  "maxCells": 5000000,
+  "domainScale": 1,
+  "geometryHash": "2a79824157fe1cf648bf9f9e54127291d08cb8d2dc212b5c1533d01e695c2e87",
+  "protocolHash": "5f8e2af1cf2557681775b3e7a235d358b47d2bfe47a55e612fee83a2df689550",
+  "physicalProtocol": {
+    "schema": 1,
+    "mode": "calm",
+    "massKg": 0.25,
+    "massSource": "protocol-default",
+    "cgM": [
+      0.1,
+      0,
+      0.015
+    ],
+    "modelCgM": [
+      0.1,
+      0,
+      0.015
+    ],
+    "floatingPose": {
+      "rollRad": 0,
+      "pitchRad": 0,
+      "rotation": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "translationM": [
+        0,
+        0,
+        0
+      ],
+      "residualM": 1.3887841236630545e-17
+    },
+    "cgSource": "cad-estimate",
+    "cgEstimate": {
+      "distribution": "shell",
+      "payloads": []
+    },
+    "cgAssumptions": [
+      "Constant wall thickness and uniform material density over the physical CAD surface. Thickness magnitude cancels from the estimated CG.",
+      "The supplied hull mass normalizes this assumed distribution; STL alone does not determine real density, infill, ballast, electronics or cargo.",
+      "All unlisted mass is included in the selected hull distribution.",
+      "Ballast and cargo entries are point masses at their specified coordinates; their own dimensions, intrinsic inertia and fluid-displacing surfaces are not modeled."
+    ],
+    "assumptionsConfirmed": true,
+    "measurementsConfirmed": false,
+    "inertiaMeasured": false,
+    "speedMps": 0.3,
+    "wave": {
+      "kind": "calm"
+    },
+    "physics": {
+      "rhoWaterKgM3": 998,
+      "rhoAirKgM3": 1.2,
+      "nuWaterM2S": 0.000001004,
+      "nuAirM2S": 0.000015,
+      "gravityMps2": 9.81,
+      "sigmaNpm": 0.072,
+      "flow": "laminar",
+      "contactAngleDeg": 90
+    },
+    "domain": {
+      "scale": 1,
+      "upstreamLengths": 2,
+      "downstreamLengths": 5,
+      "sideLengths": 3,
+      "belowKeelLengths": 3
+    },
+    "observation": {
+      "durationS": 4.000000000000001,
+      "averaging": "final-half-after-warmup"
+    },
+    "fidelity": "quick",
+    "exactDomain": {
+      "minM": [
+        -1,
+        -0.6300000000000001,
+        -0.620875083500334
+      ],
+      "maxM": [
+        0.6000000000000001,
+        0.6300000000000001,
+        0.2
+      ]
+    }
+  }
+}

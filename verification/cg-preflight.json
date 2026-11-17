@@ -1,0 +1,30 @@
+{
+  "applicationVersion": "1.2.0",
+  "test": "Distributed service core CAD-CG preflight",
+  "passed": true,
+  "nativeSolverRun": false,
+  "physicalAccuracyValidated": false,
+  "totalMassKg": 0.25,
+  "hullMassKg": 0.2,
+  "payloadMassKg": 0.05,
+  "hullCgM": [
+    0.1,
+    0,
+    0.015
+  ],
+  "loadedCgM": [
+    0.10400000000000001,
+    0,
+    0.02
+  ],
+  "cgSource": "cad-estimate",
+  "cgMeasured": false,
+  "geometryHash": "2a79824157fe1cf648bf9f9e54127291d08cb8d2dc212b5c1533d01e695c2e87",
+  "protocolHash": "badd03f0bcf7db1bfcead592418675735a8d548eb5d0cbff50c2896ab04e54b5",
+  "assumptions": [
+    "Constant wall thickness and uniform material density over the physical CAD surface. Thickness magnitude cancels from the estimated CG.",
+    "The supplied hull mass normalizes this assumed distribution; STL alone does not determine real density, infill, ballast, electronics or cargo.",
+    "All unlisted mass is included in the selected hull distribution.",
+    "Ballast and cargo entries are point masses at their specified coordinates; their own dimensions, intrinsic inertia and fluid-displacing surfaces are not modeled."
+  ]
+}
