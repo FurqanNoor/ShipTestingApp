@@ -170,6 +170,8 @@ export async function submit(c,remoteDir){
   return id;
 }
 export const cancelRemote=(c,slurmId)=>ssh(c,`scancel ${Number(slurmId)}`).catch(()=>{});
+/** Cancel jobs by their unique names (hull-<id8>): used for jobs whose Slurm id was never recorded (submit in flight at a crash). */
+export const cancelRemoteByName=(c,names)=>{const ok=names.filter(n=>/^hull-[a-f0-9]{8}$/.test(n));return ok.length?ssh(c,`scancel -u ${c.user} ${ok.map(n=>'-n '+n).join(' ')}`).catch(()=>{}):Promise.resolve();};
 
 /**
  * One SSH call for every active job: Slurm state plus the new part of each job's log (base64, so any log content is

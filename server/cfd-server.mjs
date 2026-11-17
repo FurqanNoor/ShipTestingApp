@@ -547,6 +547,7 @@ try{calibration=JSON.parse(await readFile(CALIBRATION,'utf8'));}catch{calibratio
 clusterConfig=await cluster.loadClusterConfig(CLUSTER_CONFIG);
 try{clusterCalibration=JSON.parse(await readFile(CLUSTER_CALIBRATION,'utf8'));}catch{clusterCalibration={};}
 // Completed results survive a local service restart; interrupted work is never replayed silently.
+const unnamedClusterJobs=[];
 for(const entry of await readdir(RUNS,{withFileTypes:true})) {
   if(!entry.isDirectory()||entry.isSymbolicLink()||!/^[a-f0-9-]{36}$/.test(entry.name))continue;
   try {
@@ -555,10 +556,13 @@ for(const entry of await readdir(RUNS,{withFileTypes:true})) {
     if(!['completed','failed','cancelled'].includes(j.status)){
       // A cluster job left running would only spend the project's allocation: stop it (best effort).
       if(j.backend==='cluster'&&j.slurmId&&clusterReady())void cluster.cancelRemote(clusterConfig,j.slurmId);
+      else if(j.backend==='cluster'&&!j.slurmId)unnamedClusterJobs.push('hull-'+j.id.slice(0,8));
       j.status='failed';j.error='Local service restarted before this job completed. Inspect its raw logs and submit a new case if needed.';j.stage='Interrupted by service restart';}
     jobs.set(j.id,j);
   } catch { /* Ignore incomplete temporary directories rather than inventing a result. */ }
 }
+// Jobs whose submit was in flight when the service stopped have no recorded Slurm id; cancel them by their unique name.
+if(unnamedClusterJobs.length&&clusterReady())void cluster.cancelRemoteByName(clusterConfig,unnamedClusterJobs);
 for(const entry of await readdir(STUDIES,{withFileTypes:true})){
   if(!entry.isFile()||entry.isSymbolicLink()||!/^[a-f0-9-]{36}\.json$/.test(entry.name))continue;
   try{await studyRunner.restore(JSON.parse(await readFile(resolve(STUDIES,entry.name),'utf8')));}catch{/* Ignore incomplete study snapshots; never fabricate progress or resume execution. */}
