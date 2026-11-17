@@ -14,11 +14,11 @@ function basin(L=200,B=60,D=40,t=2):Float32Array {
 }
 
 describe('Unattended standard comparison planning',()=>{
-  it('prepares all twelve physical conditions without asking for manual values',()=>{
+  it('prepares all nine physical conditions without asking for manual values',()=>{
     const p=createAutomaticPlan({name:'Team hull',trianglesMm:boxHull(220,80,45)});
-    expect(p.conditions).toHaveLength(12);expect(new Set(p.conditions.map(c=>c.id)).size).toBe(12);
+    expect(p.conditions).toHaveLength(9);expect(new Set(p.conditions.map(c=>c.id)).size).toBe(9);expect(p.conditions.some(c=>c.id.endsWith('-low'))).toBe(false);
     expect(p.defaults.loadsKg).toEqual([.15,.25,.35]);expect(p.conditions.filter(c=>c.mode==='calm')).toHaveLength(3);
-    expect(p.conditions.filter(c=>c.mode==='beam-waves')).toHaveLength(9);
+    expect(p.conditions.filter(c=>c.mode==='beam-waves')).toHaveLength(6);
     for(const c of p.conditions){expect(c.request.measurementsConfirmed).toBe(false);expect(c.request.automation).toEqual({schema:1,protocol:AUTOMATIC_PROTOCOL});expect(c.request.cgSource).toBe('cad-estimate');expect(c.request.cgEstimate.payloads).toHaveLength(1);expect(c.request.cgEstimate.payloads[0].massKg).toBeCloseTo(c.massKg/2,12);expect(c.request.cgEstimate.payloads[0].positionM[1]).toBe(0);}
     expect(p.assumptions.join(' ')).toContain('not measured');
   });
@@ -42,16 +42,16 @@ describe('Unattended standard comparison planning',()=>{
     const full=createAutomaticPlan({trianglesMm:boxHull(220,80,45)}),half=createAutomaticPlan({trianglesMm:boxHull(110,40,22.5)});
     full.conditions.forEach((c,i)=>{
       if(c.mode==='calm'){expect(c.request.speedMps).toBe(.3);expect(c.request.durationS).toBeGreaterThanOrEqual(10);expect(c.request).not.toHaveProperty('inertiaSource');}
-      else{expect(c.request.speedMps).toBe(0);expect(c.request.inertiaSource).toBe('cad-estimate');expect(half.conditions[i].waveHeightM).toBeCloseTo(c.waveHeightM!*.5,12);expect(half.conditions[i].wavePeriodS).toBeCloseTo(c.wavePeriodS!*Math.sqrt(.5),12);expect(c.request.durationS).toBeCloseTo(60*c.wavePeriodS!,12);}
+      else{expect(c.request.speedMps).toBe(0);expect(c.request.inertiaSource).toBe('cad-estimate');expect(half.conditions[i].waveHeightM).toBeCloseTo(c.waveHeightM!*.5,12);expect(half.conditions[i].wavePeriodS).toBeCloseTo(c.wavePeriodS!*Math.sqrt(.5),12);expect(c.request.durationS).toBeCloseTo(30*c.wavePeriodS!,12);}
     });
   });
   it('uses exactly the same wave conditions for all three weights',()=>{
     const p=createAutomaticPlan({trianglesMm:boxHull(220,80,45)}),rows=p.conditions.filter(c=>c.mode==='beam-waves');
-    expect(rows.slice(0,3).map(c=>[c.waveHeightM,c.wavePeriodS])).toEqual(rows.slice(3,6).map(c=>[c.waveHeightM,c.wavePeriodS]));
-    expect(rows.slice(3,6).map(c=>[c.waveHeightM,c.wavePeriodS])).toEqual(rows.slice(6,9).map(c=>[c.waveHeightM,c.wavePeriodS]));
+    expect(rows.slice(0,2).map(c=>[c.waveHeightM,c.wavePeriodS])).toEqual(rows.slice(2,4).map(c=>[c.waveHeightM,c.wavePeriodS]));
+    expect(rows.slice(2,4).map(c=>[c.waveHeightM,c.wavePeriodS])).toEqual(rows.slice(4,6).map(c=>[c.waveHeightM,c.wavePeriodS]));
   });
   it('does not remove or change prescribed masses for a small hull that will be overloaded',()=>{
-    const p=createAutomaticPlan({trianglesMm:boxHull(50,20,10)});expect(p.conditions).toHaveLength(12);expect(p.defaults.loadsKg).toEqual([.15,.25,.35]);
+    const p=createAutomaticPlan({trianglesMm:boxHull(50,20,10)});expect(p.conditions).toHaveLength(9);expect(p.defaults.loadsKg).toEqual([.15,.25,.35]);
   });
   it('does not mutate or resize the submitted geometry',()=>{
     const raw=basin(),before=raw.slice(),p=createAutomaticPlan({trianglesMm:raw});

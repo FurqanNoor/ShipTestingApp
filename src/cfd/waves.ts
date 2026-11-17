@@ -13,7 +13,7 @@ export interface WaveCaseSettings {
   /** Optional repeat measurements must agree with the underlying case manifest. */
   massKg?:number;
   cgM?:Vec3;
-  /** Principal moments about the supplied loaded CG, kg m². Pair with inertiaOrientation. */
+  /** Principal moments about the supplied loaded CG, kg mÂ². Pair with inertiaOrientation. */
   inertiaKgM2?:Vec3;
   inertiaMeasured?:boolean;
   inertiaSource?:'measured'|'cad-estimate';
@@ -84,7 +84,7 @@ function positive(v:number,name:string) {
 }
 function checkedOrientation(value:Matrix3|undefined):Matrix3 {
   const q:Matrix3=value??[[1,0,0],[0,1,0],[0,0,1]];
-  if(!Array.isArray(q)||q.length!==3||q.some(row=>!Array.isArray(row)||row.length!==3||row.some(v=>!Number.isFinite(v))))throw new Error('Principal inertia orientation must be a finite 3 × 3 matrix.');
+  if(!Array.isArray(q)||q.length!==3||q.some(row=>!Array.isArray(row)||row.length!==3||row.some(v=>!Number.isFinite(v))))throw new Error('Principal inertia orientation must be a finite 3 Ã— 3 matrix.');
   for(let i=0;i<3;i++)for(let j=0;j<3;j++){
     const product=q.reduce((sum,row)=>sum+row[i]*row[j],0);
     if(Math.abs(product-(i===j?1:0))>1e-8)throw new Error('Principal inertia orientation must be orthonormal.');
@@ -137,7 +137,7 @@ function appendFunction(text:string,body:string):string {
   return text.slice(0,end-1)+body+'\n'+text.slice(end-1);
 }
 
-/** Solve finite-depth linear dispersion ω² = g k tanh(k h) by monotonic bisection. */
+/** Solve finite-depth linear dispersion Ï‰Â² = g k tanh(k h) by monotonic bisection. */
 export function regularWaveLength(periodS:number,depthM:number,gravity=9.81):number {
   positive(periodS,'Wave period');positive(depthM,'Water depth');positive(gravity,'Gravity');
   const target=(2*Math.PI/periodS)**2;
@@ -212,7 +212,11 @@ function waveBackground(b:CfdManifest,height:number,wavelength:number,moving:boo
   const [hx0,hy0]=b.geometry.minM,[hx1,hy1]=b.geometry.maxM;
   const L=hx1-hx0,B=hy1-hy0,D=b.geometry.maxM[2]-b.geometry.minM[2];
   // Quick fidelity: a deliberately light wave grid for fast screening; heights are calibrated by the wave-maker gain.
-  const settings=b.mesh.fidelity==='quick'?{height:4,lambda:20,hull:12}:b.mesh.level==='coarse'?{height:6,lambda:30,hull:20}:b.mesh.level==='medium'?{height:8,lambda:60,hull:30}:{height:12,lambda:90,hull:45};
+  // Full-mode grids refine systematically by sqrt(2) per level in every wave direction (ITTC three-grid study).
+  // The quick grid is the coarse level of the automatic Full study, so Full checks whether the Quick answer has converged.
+  const grid=b.mesh.fidelity==='quick'?{height:4,lambda:20,hull:12}:{height:6,lambda:30,hull:20};
+  const refine=b.mesh.level==='coarse'?1:b.mesh.level==='medium'?Math.SQRT2:2;
+  const settings={height:grid.height*refine,lambda:grid.lambda*refine,hull:grid.hull*refine};
   const along=wavelength/settings.lambda,across=L/settings.hull,dz=height/settings.height;
   const target=b.mesh.finestCellM;
   // Near-hull background spacing: a power-of-two multiple of the hull target (so refinement lands on it exactly),
@@ -286,7 +290,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
   const inertiaSource=settings.inertiaSource??'measured',estimatedInertia=inertiaSource==='cad-estimate';
   if(moving&&!['measured','cad-estimate'].includes(inertiaSource))throw new Error('Choose measured or explicitly CAD-estimated mass inertia.');
   if(moving&&estimatedInertia&&(settings.inertiaMeasured===true||!settings.inertiaTensorKgM2&&!settings.inertiaOrientation||!settings.inertiaAssumptions?.length||settings.inertiaAssumptions.some(s=>typeof s!=='string'||!s.trim())))throw new Error('CAD-estimated inertia requires its full tensor or principal orientation and explicit mass assumptions; it must not be labelled measured.');
-  if(moving&&(!estimatedInertia&&settings.inertiaMeasured!==true||!settings.inertiaTensorKgM2&&(!settings.inertiaKgM2||settings.inertiaKgM2.length!==3||settings.inertiaKgM2.some(v=>!Number.isFinite(v)||v<=0))))throw new Error('Free roll requires positive mass moments of inertia about the supplied loaded CG, in kg m²: measured inputs or explicitly CAD-estimated full mass inertia.');
+  if(moving&&(!estimatedInertia&&settings.inertiaMeasured!==true||!settings.inertiaTensorKgM2&&(!settings.inertiaKgM2||settings.inertiaKgM2.length!==3||settings.inertiaKgM2.some(v=>!Number.isFinite(v)||v<=0))))throw new Error('Free roll requires positive mass moments of inertia about the supplied loaded CG, in kg mÂ²: measured inputs or explicitly CAD-estimated full mass inertia.');
   const suppliedOrientation=checkedOrientation(settings.inertiaOrientation);
   const rollAxis:Vec3=settings.rollAxis??[1,0,0];
   if(!Array.isArray(rollAxis)||rollAxis.length!==3||rollAxis.some(v=>!Number.isFinite(v))||Math.abs(Math.hypot(...rollAxis)-1)>1e-8)throw new Error('The free-roll axis must be a finite unit vector in model/world coordinates.');
@@ -332,7 +336,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
   const groupSpeed=.5*(2*Math.PI/settings.periodS)/k*(1+(kh>30?0:2*kh/Math.sinh(2*kh)));
   const distance=moving?-b.domain.minM[1]+b.load.cgM[1]:b.domain.maxM[0]-b.load.cgM[0];
   const warmup=Math.max(10*settings.periodS,distance/groupSpeed+5*settings.periodS);
-  const quick=b.mesh.fidelity==='quick',measuredPeriods=quick?8:30;
+  const quick=b.mesh.fidelity==='quick',measuredPeriods=quick?8:15;
   const duration=Math.max(b.numerics.durationS,warmup+measuredPeriods*settings.periodS);
   if(duration>600)throw new Error('Wave propagation plus measurement requires more than the supported 600-second case duration.');
   const stepsPerPeriod=quick?100:200;
@@ -424,7 +428,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
     ],
     ...(moving?{motion:{degreesOfFreedom:['heave-Z',Math.abs(rollAxis[0]-1)<1e-10&&Math.abs(rollAxis[1])+Math.abs(rollAxis[2])<1e-10?'roll-X':'roll-about-hull-axis'] as MotionMetadata['degreesOfFreedom'],inertiaKgM2:[...solverInertia] as Vec3,inertiaMeasured:!estimatedInertia,inertiaSource,inertiaAssumptions:estimatedInertia?[...settings.inertiaAssumptions!]:[],initialOrientation:inertiaOrientation.map(row=>[...row]) as Matrix3,rollAxis:[...rollAxis] as Vec3,inertiaTensorKgM2:inertiaTensor.map(row=>[...row]) as Matrix3,inertiaFrame:'constrained-roll-body-frame' as const,inertiaProjection:'effective inertia a^T I a for the only free rotation' as const,effectiveRollInertiaKgM2:projection.effectiveRollInertiaKgM2,principalMomentsKgM2:projection.principal.momentsKgM2,principalOrientation:projection.principal.orientation,initialCentreOfMassM:[...cg] as Vec3,stateFile:'postProcessing/rigidBodyState/0/sixDoFRigidBodyState.dat',angles:'radians' as const,meshMotion:'morphing' as const}}:{}),
   };
-  files['README.txt']=`${textFile(base,'README.txt')}\nWAVE CASE\n${moving?`Zero-speed regular beam waves; ${estimatedInertia?'CAD-estimated':'measured'} inertia for free heave and roll.`:'Zero-speed regular head waves; hull fixed. This is not advancing-ship drag.'}\nRun with the same Allrun. Native wave models are loaded from libwaveModels.so.\n\nWave height H is regular crest-to-trough, not irregular-sea Hs. Before interpreting any force or motion, refine the global wave inlet/free-surface mesh, run an empty-tank propagation/reflection study, and converge time and domain. Background mesh presets here are a smoke-test starting point, not a resolved wave mesh. Native absorption does not prove reflection independence.\n\nWarmup at least ${n(warmup)} seconds; requested total duration ${n(duration)} seconds includes 30 additional wave periods. Inspect actual signal stationarity; these are minimum scheduling rules, not guarantees.\n${moving?`Motion state: postProcessing/rigidBodyState/0/sixDoFRigidBodyState.dat, radians and SI coordinates. Inertia source: ${inertiaSource}. The full tensor, its principal system and the effective scalar roll inertia a^T I a are recorded in the manifest. Both native orientation and initialOrientation align the computational first axis with the initial longitudinal hull axis, preserving the physical initial CAD pose. Native axis constraint (1 0 0) acts in that computational body frame. This is a reduced heave-plus-roll model, not unconstrained rotational dynamics. Only heave-Z and rotation about ${v(rollAxis)} are free. Large motion can invalidate the morphing mesh.\n`:''}`;
+  files['README.txt']=`${textFile(base,'README.txt')}\nWAVE CASE\n${moving?`Zero-speed regular beam waves; ${estimatedInertia?'CAD-estimated':'measured'} inertia for free heave and roll.`:'Zero-speed regular head waves; hull fixed. This is not advancing-ship drag.'}\nRun with the same Allrun. Native wave models are loaded from libwaveModels.so.\n\nWave height H is regular crest-to-trough, not irregular-sea Hs. Before interpreting any force or motion, refine the global wave inlet/free-surface mesh, run an empty-tank propagation/reflection study, and converge time and domain. Background mesh presets here are a smoke-test starting point, not a resolved wave mesh. Native absorption does not prove reflection independence.\n\nWarmup at least ${n(warmup)} seconds; requested total duration ${n(duration)} seconds includes ${measuredPeriods} additional wave periods. Inspect actual signal stationarity; these are minimum scheduling rules, not guarantees.\n${moving?`Motion state: postProcessing/rigidBodyState/0/sixDoFRigidBodyState.dat, radians and SI coordinates. Inertia source: ${inertiaSource}. The full tensor, its principal system and the effective scalar roll inertia a^T I a are recorded in the manifest. Both native orientation and initialOrientation align the computational first axis with the initial longitudinal hull axis, preserving the physical initial CAD pose. Native axis constraint (1 0 0) acts in that computational body frame. This is a reduced heave-plus-roll model, not unconstrained rotational dynamics. Only heave-Z and rotation about ${v(rollAxis)} are free. Large motion can invalidate the morphing mesh.\n`:''}`;
   files['manifest.json']=JSON.stringify(manifest,null,2)+'\n';
   return {files,manifest};
 }

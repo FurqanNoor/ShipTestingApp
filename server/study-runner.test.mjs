@@ -3,15 +3,16 @@ import assert from 'node:assert/strict';
 import {StudyRunner,assessCondition} from './study-runner.mjs';
 import {timeWeightedRms} from './result-reader.mjs';
 
-const phases=['coarse','medium','fine','time-step','domain'];
+// Run order: time-step and domain checks are made on the coarse grid, before the expensive medium and fine runs.
+const phases=['coarse','time-step','domain','medium','fine'];
 function solverResult(phase,{mode='calm',value,cellCount,actualDt}={}){
-  const index=phases.indexOf(phase),responses=[1,.99,.985,.984,.986];
+  const index=phases.indexOf(phase),responses=[1,.995,.99,.985,.984];
   return {source:'OpenFOAM',geometryHash:'actual-synthetic-fixture-geometry-hash',protocolHash:phase==='domain'?'domain-variant-protocol-hash':'matching-reference-protocol-hash',
     manifest:{condition:{kind:mode,heightM:mode==='calm'?undefined:.007,periodS:mode==='calm'?undefined:.45},speedMps:mode==='calm'?.3:0,
       load:{massKg:.25,cgM:[.1,0,.015],cgSource:'cad-estimate',cgMeasured:false},physics:{densityWaterKgM3:998},
       domain:{scale:phase==='domain'?1.5:1},numerics:{durationS:40,initialDeltaTS:phase==='time-step'?.00025:.0005,maxDeltaTS:phase==='time-step'?.00025:.0005},
       ...(mode==='beam-waves'?{motion:{inertiaKgM2:[.0001,.0002,.00025],inertiaSource:'cad-estimate'}}:{})},
-    solverRun:{actualMeshCells:cellCount??[1000,2000,4000,4000,6000][index],actualDeltaTS:{maximum:actualDt??(phase==='time-step'?.00025:.0005)}},
+    solverRun:{actualMeshCells:cellCount??[1000,1000,1500,2000,4000][index],actualDeltaTS:{maximum:actualDt??(phase==='time-step'?.00025:.0005)}},
     forces:{meanDragN:mode==='calm'?(value??responses[index]):0},
     ...(mode==='beam-waves'?{motion:{rollRmsDeg:value??responses[index],heaveRmsM:.001,maxAbsRollDeg:1.5,rollRmsDriftWithinTolerance:true}}:{}),
     hydro:{buoyancyN:2.45,gmM:.01,freeboardM:.02},
@@ -28,35 +29,35 @@ test('complete genuine-output fixtures can pass declared sensitivity diagnostics
   const r=assessCondition(condition());assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.rankable,false);assert.equal(r.physicalValidation,'not-performed');assert.equal(r.metrics.referenceMesh,'fine');
 });
 test('identical actual cell counts cannot masquerade as three refined meshes',()=>{
-  const c=condition();c.runs[1].result.solverRun.actualMeshCells=1000;const r=assessCondition(c);assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.checks.find(c=>c.name==='Three distinct meshes').passed,false);
+  const c=condition();c.runs[3].result.solverRun.actualMeshCells=1000;const r=assessCondition(c);assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.checks.find(c=>c.name==='Three distinct meshes').passed,false);
 });
 test('mesh comparisons require recorded matching physical protocol hashes',()=>{
-  const c=condition();delete c.runs[1].result.protocolHash;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
-  c.runs[1].result.protocolHash='different-load-or-pose';assert.equal(assessCondition(c).checks.find(c=>c.name==='Three distinct meshes').passed,false);
+  const c=condition();delete c.runs[3].result.protocolHash;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+  c.runs[3].result.protocolHash='different-load-or-pose';assert.equal(assessCondition(c).checks.find(c=>c.name==='Three distinct meshes').passed,false);
 });
 test('an inactive halved timestep cap does not pass actual timestep sensitivity',()=>{
-  const c=condition();c.runs[3].result.solverRun.actualDeltaTS.maximum=.0005;const r=assessCondition(c);assert.equal(r.checks.find(c=>c.name==='Actual time-step reduction').passed,false);assert.equal(r.numericalSensitivityPassed,false);
+  const c=condition();c.runs[1].result.solverRun.actualDeltaTS.maximum=.0005;const r=assessCondition(c);assert.equal(r.checks.find(c=>c.name==='Actual time-step reduction').passed,false);assert.equal(r.numericalSensitivityPassed,false);
 });
 test('wave comparisons use RMS roll rather than a near-zero mean longitudinal force',()=>{
-  const r=assessCondition(condition('beam-waves'));assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.metrics.meanDragN,0);assert.equal(r.metrics.rollRmsDeg,.985);
+  const r=assessCondition(condition('beam-waves'));assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.metrics.meanDragN,0);assert.equal(r.metrics.rollRmsDeg,.984);
 });
 test('unsettled wave response, failed detailed meshes and missing genuine channels remain inconclusive',()=>{
   for(const mutate of [r=>{r.motion.rollRmsDriftWithinTolerance=false;},r=>{r.quality.detailedMeshOkay=false;},r=>{r.source='empirical-preview';}]){
-    const c=condition('beam-waves');mutate(c.runs[2].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+    const c=condition('beam-waves');mutate(c.runs[4].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
   }
 });
 test('changed physical observations and failed domain enlargement cannot pass comparison',()=>{
-  const c=condition();c.runs[4].result.manifest.numerics.durationS=50;assert.equal(assessCondition(c).checks.find(c=>c.name==='Domain sensitivity').passed,null);
-  c.runs[4].result.manifest.numerics.durationS=40;c.runs[4].result.manifest.domain.scale=1;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+  const c=condition();c.runs[2].result.manifest.numerics.durationS=50;assert.equal(assessCondition(c).checks.find(c=>c.name==='Domain sensitivity').passed,null);
+  c.runs[2].result.manifest.numerics.durationS=40;c.runs[2].result.manifest.domain.scale=1;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
 });
 test('a blocked fine mesh retains only the available genuine earlier result',()=>{
-  const c=condition();c.runs=c.runs.slice(0,2).concat({phase:'fine',status:'blocked',error:'Mesh budget exceeded'});const r=assessCondition(c);assert.equal(r.metrics.referenceMesh,'medium');assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.rankable,false);
+  const c=condition();c.runs=c.runs.filter(r=>['coarse','medium'].includes(r.phase)).concat({phase:'fine',status:'blocked',error:'Mesh budget exceeded'});const r=assessCondition(c);assert.equal(r.metrics.referenceMesh,'medium');assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.rankable,false);
 });
 test('runner schedules exactly five distinct numerical cases per condition with bounded common protocol',async()=>{
   const calls=[],snapshots=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{},persist:async s=>snapshots.push(s)});
   const created=await runner.create(plan(),{id:'study-fixture'});await runner.running;const r=runner.get(created.id);
   assert.equal(calls.length,10);assert.deepEqual(calls.slice(0,5).map(c=>c.context.phase),phases);assert.equal(r.progress.solvesFinished,10);assert.equal(r.progress.conditionsFinished,2);assert.equal(r.status,'completed');
-  assert.equal(new Set(calls.slice(0,5).map(c=>c.request.durationS)).size,1);assert.equal(calls[3].request.maxDeltaTS,.00025);assert.equal(calls[4].request.domainScale,1.5);assert.ok(calls.every(c=>c.request.maxCells<=5000000));
+  assert.equal(new Set(calls.slice(0,5).map(c=>c.request.durationS)).size,1);assert.equal(calls[1].request.maxDeltaTS,.002);assert.equal(calls[1].request.maxCo,.4);assert.equal(calls[2].request.domainScale,1.5);assert.ok(calls.every(c=>c.request.maxCells<=5000000));
   assert.equal(JSON.stringify(snapshots).includes('trianglesMm'),false);
 });
 test('a condition blocked by preflight does not prevent other conditions from running',async()=>{
@@ -111,7 +112,9 @@ test('quick studies run one coarse solve per selected condition with quick fidel
   const q=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null,'quick');
   assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.8);assert.ok(Math.abs(q.durationS-4)<1e-9);
   const full=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null);
-  assert.equal(full.fidelity,undefined);assert.equal(full.maxDeltaTS,.0005);assert.equal(full.durationS,20);
+  // Full's coarse grid and numerics are Quick's, over a longer window (12 hull lengths).
+  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.004);assert.equal(full.maxCo,.8);assert.ok(Math.abs(full.durationS-8)<1e-9);
+  const wave=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'fine',null);assert.equal(wave.mesh,'fine');assert.ok(Math.abs(wave.durationS-25*.45)<1e-9);assert.equal(wave.maxCo,1);
 });
 test('full remains the default speed and keeps all five phases',async()=>{
   const calls=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{}});

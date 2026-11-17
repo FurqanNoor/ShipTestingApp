@@ -5,7 +5,7 @@ import {prepareCfdJob} from '../src/cfd/request';
 
 const plan=()=>createAutomaticPlan({name:'Automatic analytical box',trianglesMm:boxHull(200,80,50)});
 describe('Automatic protocol reaches actual case generation without manual physical inputs',()=>{
-  it('prepares all twelve standard conditions and never claims imposed weights were measured',async()=>{
+  it('prepares all nine standard conditions and never claims imposed weights were measured',async()=>{
     for(const c of plan().conditions){
       const p=await prepareCfdJob(c.request,`auto-${c.id}`);
       expect(p.request.measurementsConfirmed).toBe(false);expect(p.request.massSource).toBe('protocol-default');

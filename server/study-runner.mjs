@@ -1,6 +1,11 @@
 /** Bounded unattended CFD studies. Passing sensitivity checks is not physical validation. */
 import {explainFailure} from './failure-hints.mjs';
-const PHASES=['coarse','medium','fine','time-step','domain'];
+/**
+ * Full: a three-grid study (coarse, medium, fine; sqrt(2) refinement) plus time-step and domain checks. The time-step
+ * and domain checks are made on the coarse grid: it is the cheapest and the most sensitive, so a pass there is
+ * conservative, and they finish early instead of after the expensive fine run.
+ */
+const PHASES=['coarse','time-step','domain','medium','fine'];
 /** quick: one fast screening solve per condition. full: mesh/time-step/domain sensitivity (5 solves). */
 export const SPEEDS={quick:['coarse'],full:PHASES};
 export function phasesFor(speed){return SPEEDS[speed]??SPEEDS.full;}
@@ -53,15 +58,15 @@ export function assessCondition(condition){
   const previous=meshComparable?difference(coarse,medium,condition.mode):null,meshChange=meshComparable?difference(medium,fine,condition.mode):null;
   checks.push(check('Mesh sensitivity',distinct&&meshChange!==null&&previous!==null?meshChange<=.02&&meshChange<=previous:null,
     condition.mode==='beam-waves'?'Finest-pair RMS roll change must be at most 2% and no larger than the preceding change; tiny responses are inconclusive.':'Finest-pair drag change must be at most 2% and no larger than the preceding change; near-zero drag is inconclusive.',{relativeChange:meshChange,threshold:.02,precedingRelativeChange:previous}));
-  const actualFineDt=fine?.solverRun?.actualDeltaTS?.maximum,actualHalfDt=half?.solverRun?.actualDeltaTS?.maximum;
-  const dtComparable=comparable(fine,half)&&cells(fine)===cells(half);
+  const actualFineDt=coarse?.solverRun?.actualDeltaTS?.maximum,actualHalfDt=half?.solverRun?.actualDeltaTS?.maximum;
+  const dtComparable=comparable(coarse,half)&&cells(coarse)===cells(half);
   const dtReduced=dtComparable&&finite(actualFineDt)&&actualFineDt>0&&finite(actualHalfDt)&&actualHalfDt>0&&actualHalfDt<=actualFineDt*.6;
   checks.push(check('Actual time-step reduction',!!dtReduced,'The largest recorded solver time step must decrease by at least 40%; changing an inactive cap alone is inconclusive.'));
-  const dtChange=dtComparable?difference(fine,half,condition.mode):null;
-  checks.push(check('Time-step sensitivity',dtReduced&&dtChange!==null?dtChange<=.02:null,'Reference and half-step response must differ by at most 2%.',{relativeChange:dtChange,threshold:.02}));
-  const domainComparable=comparable(fine,domain,true),scale=fine?.manifest?.domain?.scale,larger=domain?.manifest?.domain?.scale;
+  const dtChange=dtComparable?difference(coarse,half,condition.mode):null;
+  checks.push(check('Time-step sensitivity',dtReduced&&dtChange!==null?dtChange<=.02:null,'Coarse-grid reference and half-step response must differ by at most 2%.',{relativeChange:dtChange,threshold:.02}));
+  const domainComparable=comparable(coarse,domain,true),scale=coarse?.manifest?.domain?.scale,larger=domain?.manifest?.domain?.scale;
   const expanded=domainComparable&&finite(scale)&&finite(larger)&&larger>=scale*1.49;
-  const domainChange=domainComparable?difference(fine,domain,condition.mode):null;
+  const domainChange=domainComparable?difference(coarse,domain,condition.mode):null;
   checks.push(check('Domain sensitivity',expanded&&domainChange!==null?domainChange<=.02:null,'A domain enlarged by 50% must change response by at most 2%, using the same observation duration.',{relativeChange:domainChange,threshold:.02}));
   const reference=fine??medium??coarse,referenceRun=reference?[...byPhase.values()].find(r=>r.result===reference):null;
   const metrics=reference?{
@@ -102,11 +107,15 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
     const calm=request.mode==='calm',duration=calm?Math.max(3,6*lengthM/request.speedMps):1;
     return {...request,fidelity:'quick',durationS:duration,mesh:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
   }
-  const duration=Math.max(request.durationS??0,request.mode==='calm'?Math.max(12,30*lengthM/request.speedMps):Math.max(30,80*period));
-  const base={...request,durationS:duration,mesh:['coarse','medium'].includes(phase)?phase:'fine',timeStepS:.0005,maxDeltaTS:.0005,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
+  // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium and fine refine the
+  // grid by sqrt(2) each. Same simulated time for every phase (comparisons require it), longer than Quick:
+  // calm 12 hull lengths (averaged over the settled second half), waves 25 periods (~12 measured after warm-up).
+  const calm=request.mode==='calm';
+  const duration=calm?Math.max(6,12*lengthM/request.speedMps):25*period;
+  const base={...request,fidelity:'quick',durationS:duration,mesh:['medium','fine'].includes(phase)?phase:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
   if(phase==='time-step'){
-    base.timeStepS=(fineResult?.manifest?.numerics?.initialDeltaTS??.0005)/2;
-    base.maxDeltaTS=(fineResult?.manifest?.numerics?.maxDeltaTS??.0005)/2;
+    // Halve both the Courant limit and the cap, so the solver's actual step really halves.
+    base.timeStepS/=2;base.maxDeltaTS/=2;base.maxCo/=2;
   }
   return base;
 }
@@ -140,7 +149,7 @@ export class StudyRunner {
   }
   async create(plan,options){
     if(this.waiting.length>=MAX_QUEUED_STUDIES)throw new Error(`The queue already holds ${MAX_QUEUED_STUDIES} studies. Let some finish first.`);
-    if(!plan||!Array.isArray(plan.conditions)||plan.conditions.length<1||plan.conditions.length>12)throw new Error('An automatic study requires 1–12 planned physical conditions.');
+    if(!plan||!Array.isArray(plan.conditions)||plan.conditions.length<1||plan.conditions.length>9)throw new Error('An automatic study requires 1–9 planned physical conditions.');
     const study=initialRecord(plan,{...options,now:this.now()});study.options.speed=SPEEDS[study.options.speed]?study.options.speed:'full';this.records.set(study.id,study);
     const queued=this.busy;if(queued)study.stage='Waiting in queue';
     try{await this.save(study);}catch(error){this.records.delete(study.id);throw error;}
@@ -174,8 +183,8 @@ export class StudyRunner {
         const speed=study.options?.speed??'full';
         for(const phase of phasesFor(speed)){
           if(study.status==='cancelled')break;
-          const fine=getResult(condition.runs.find(r=>r.phase==='fine'));
-          if(['time-step','domain'].includes(phase)&&!fine){condition.runs.push({phase,status:'skipped',error:'No genuine fine reference run is available.'});continue;}
+          const fine=getResult(condition.runs.find(r=>r.phase==='coarse'));
+          if(['time-step','domain'].includes(phase)&&!fine){condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});continue;}
           const run={phase,status:'preparing'};condition.runs.push(run);condition.stage=`${phase}: preparing`;study.stage=`${condition.label} · ${phase}`;await this.save(study);
           try{
             const job=await this.runCase(numericalRequest(planned.request,phase,fine,speed),{

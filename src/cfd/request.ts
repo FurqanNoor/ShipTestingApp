@@ -4,7 +4,7 @@ import { generateOpenFoamCase, type CfdCasePackage, type MeshLevel } from './cas
 import { extendCaseWithWaves } from './waves';
 import { estimateMassProperties,type Matrix3 } from './massProperties';
 import {solveFloatingEquilibrium,type FloatingEquilibrium} from './equilibrium';
-import {standardBallast,AUTOMATIC_PROTOCOL,AUTOMATIC_WAVE_PRESETS} from './automatic';
+import {standardBallast,AUTOMATIC_PROTOCOL,AUTOMATIC_WAVE_PRESETS,waveGenerationGain} from './automatic';
 
 export type CfdRunMode = 'calm' | 'head-waves' | 'beam-waves';
 export type CfdCgSource = 'measured' | 'cad-estimate';
@@ -276,7 +276,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
     mesh, fidelity, durationS, timeStepS,maxDeltaTS, maxCo, maxCells, domainScale,
   });
   const preset=automatic&&mode==='beam-waves'?AUTOMATIC_WAVE_PRESETS.find(w=>{const scale=hull.bounds.lengthM/.22;return Math.abs(w.height*scale-waveHeightM!)<1e-10&&Math.abs(w.period*Math.sqrt(scale)-wavePeriodS!)<1e-10;}):undefined;
-  const generationGain=preset?preset.gain[fidelity]:1;
+  const generationGain=preset?waveGenerationGain(preset,fidelity,mesh):1;
   if (mode !== 'calm') pkg = extendCaseWithWaves(pkg, { kind: mode, generationGain, heightM: waveHeightM!, periodS: wavePeriodS!, massKg, cgM, inertiaKgM2,inertiaTensorKgM2,inertiaSource,inertiaAssumptions:estimatedMassProperties?.assumptions,rollAxis:pose?pose.rotation.map(row=>row[0]) as HydroPoint:undefined,inertiaMeasured: request.inertiaMeasured });
   // Different observation windows or boundaries must never compare as one protocol.
   const recordedProtocol = {...physicalProtocol,observation:{durationS:pkg.manifest.numerics.durationS,averaging:'final-half-after-warmup'},fidelity,exactDomain:{minM:pkg.manifest.domain.minM,maxM:pkg.manifest.domain.maxM}};

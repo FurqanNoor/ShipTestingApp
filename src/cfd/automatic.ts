@@ -9,7 +9,15 @@ export const MAX_CAD_TRIANGLES=500_000;
  * gain: wave-maker amplitude gain per grid, from 2D empty-tank calibration of the generated wave cases (achieved/target
  * height at the hull gauges without gain: quick low 0.69, medium 0.74, high 0.79; Full coarse grid 0.91, 0.935, 0.94). Each run still measures the wave it got.
  */
-export const AUTOMATIC_WAVE_PRESETS=[{id:'low',label:'Low',height:.004,period:.35,gain:{quick:1/.69,standard:1/.91}},{id:'medium',label:'Medium',height:.0073,period:.45,gain:{quick:1/.74,standard:1/.935}},{id:'high',label:'High',height:.012,period:.6,gain:{quick:1/.79,standard:1/.94}}] as const;
+export const AUTOMATIC_WAVE_PRESETS=[{id:'medium',label:'Medium',height:.0073,period:.45,gain:{quick:1/.74,standard:1/.935}},{id:'high',label:'High',height:.012,period:.6,gain:{quick:1/.79,standard:1/.94}}] as const;
+/**
+ * Wave-maker gain for a grid. Medium and fine grids refine the coarse one by sqrt(2) each; the generated wave's
+ * numerical damping is second order in cell size, so the coarse height deficit (1 - g) halves per level.
+ */
+export function waveGenerationGain(preset:(typeof AUTOMATIC_WAVE_PRESETS)[number],fidelity:'quick'|'standard',mesh:'coarse'|'medium'|'fine'='coarse'):number{
+  const deficit=1-1/preset.gain[fidelity];
+  return 1/(1-deficit/(mesh==='coarse'?1:mesh==='medium'?2:4));
+}
 export interface AutomaticPlanInput {name?:string;trianglesMm:number[]|Float32Array}
 /** Competition load rule: half of each test mass is compact ballast placed low on the centreline. */
 export const BALLAST_FRACTION=.5,BALLAST_HEIGHT_FRACTION=.1;
@@ -122,7 +130,7 @@ function detectGeometry(triangles:Float32Array):CfdHull {
   throw new Error('Automatic hull preparation failed. Check STL units, axes and closure; supported open hulls need a continuous horizontal top rim. '+errors.join(' '));
 }
 
-/** Twelve identical physical conditions for every supplied 220 mm-class design. */
+/** Nine identical physical conditions (3 masses x calm, medium and high waves) for every supplied 220 mm-class design. */
 export function createAutomaticPlan(input:AutomaticPlanInput):AutomaticPlan {
   if(!input||!(Array.isArray(input.trianglesMm)||input.trianglesMm instanceof Float32Array)||!input.trianglesMm.length||input.trianglesMm.length%9||input.trianglesMm.length>MAX_CAD_TRIANGLES*9)throw new Error(`Provide 1–${MAX_CAD_TRIANGLES.toLocaleString('en-GB')} complete CAD triangles for automatic testing. Export the STL at a coarser resolution.`);
   if(Array.from(input.trianglesMm).some(v=>!Number.isFinite(v)||Math.abs(v)>1e6))throw new Error('CAD coordinates must be finite millimetres within the supported range.');
@@ -151,7 +159,7 @@ export function createAutomaticPlan(input:AutomaticPlanInput):AutomaticPlan {
     conditions.push({id:`${grams}g-calm`,label:`${grams} g · Calm water`,massKg,mode:'calm',request:calm});
     for(const w of waves){
       const waveHeightM=w.height*lengthRatio,wavePeriodS=w.period*periodRatio;
-      const request:AutomaticRequest={...shared,cgEstimate,name:`${name} · ${grams} g · ${w.label} waves`,mode:'beam-waves',massKg,speedMps:0,waveHeightM,wavePeriodS,inertiaSource:'cad-estimate',durationS:60*wavePeriodS};
+      const request:AutomaticRequest={...shared,cgEstimate,name:`${name} · ${grams} g · ${w.label} waves`,mode:'beam-waves',massKg,speedMps:0,waveHeightM,wavePeriodS,inertiaSource:'cad-estimate',durationS:30*wavePeriodS};
       conditions.push({id:`${grams}g-${w.id}`,label:`${grams} g · ${w.label} beam waves`,massKg,mode:'beam-waves',waveHeightM,wavePeriodS,request});
     }
   }

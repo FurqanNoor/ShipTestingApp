@@ -63,7 +63,7 @@ describe('Quick fidelity',()=>{
     }
     const warmup=quick.manifest.numerics.recommendedWarmupS;
     expect(quick.manifest.numerics.durationS).toBeCloseTo(warmup+8*1,9);
-    expect(standard.manifest.numerics.durationS).toBeCloseTo(warmup+30*1,9);
+    expect(standard.manifest.numerics.durationS).toBeCloseTo(warmup+15*1,9);
     expect(quick.manifest.numerics.writeIntervalS).toBeCloseTo(quick.manifest.numerics.durationS/20,9);
     expect(quick.manifest.numerics.maxDeltaTS).toBeCloseTo(Math.min(.004,1/100),12);
     expect(extendCaseWithWaves(generateOpenFoamCase(still({durationS:1,fidelity:"quick",maxDeltaTS:.004,timeStepS:.001})),{...beam,heightM:.002,periodS:.3}).manifest.numerics.maxDeltaTS).toBeCloseTo(.3/100,12);
@@ -76,19 +76,19 @@ describe('Quick fidelity',()=>{
 
 describe('Test picker',()=>{
   const selected=():CfdSelection=>({id:1,name:'Hull',trianglesMm:boxHull(200,60,40),sizeMm:[200,60,40],massG:28,speedMps:.3,cgM:[0,0,0]});
-  it('defaults to one quick calm test, not all twelve',()=>{
+  it('defaults to one quick calm test, not all nine',()=>{
     expect(DEFAULT_AUTO_CHOICE).toEqual({speed:'quick',cores:null,conditions:['250g-calm']});
     expect(plannedSolves(DEFAULT_AUTO_CHOICE)).toBe(1);
-    expect(plannedSolves({speed:'full',cores:null,conditions:AUTO_CONDITION_IDS})).toBe(60);
-    expect(AUTO_CONDITION_IDS).toHaveLength(12);
+    expect(plannedSolves({speed:'full',cores:null,conditions:AUTO_CONDITION_IDS})).toBe(45);
+    expect(AUTO_CONDITION_IDS).toHaveLength(9);expect(AUTO_CONDITION_IDS.some(id=>id.endsWith('-low'))).toBe(false);
   });
   it('drops unknown or duplicate tests and keeps protocol order',()=>{
     expect(normaliseChoice({speed:'full',cores:3,conditions:['350g-high','bogus','150g-calm','150g-calm']})).toEqual({speed:'full',cores:3,conditions:['150g-calm','350g-high']});
     expect(normaliseChoice({speed:'turbo',cores:-2})).toEqual({speed:'quick',cores:null,conditions:['250g-calm']});
   });
   it('sends the chosen tests, speed and cores with the CAD',()=>{
-    const request=buildAutomaticStudyRequest(selected(),{speed:'quick',cores:4,conditions:['150g-calm','250g-low']});
-    expect(request).toMatchObject({conditionIds:['150g-calm','250g-low'],speed:'quick',cores:4});
+    const request=buildAutomaticStudyRequest(selected(),{speed:'quick',cores:4,conditions:['150g-calm','250g-high']});
+    expect(request).toMatchObject({conditionIds:['150g-calm','250g-high'],speed:'quick',cores:4});
     expect(()=>buildAutomaticStudyRequest(selected(),{speed:'quick',cores:null,conditions:[]})).toThrow(/at least one/);
     expect(buildAutomaticStudyRequest(selected(),{speed:'full',cores:null,conditions:['150g-calm']})).not.toHaveProperty('cores');
   });
@@ -116,8 +116,8 @@ describe('Queue and comparison helpers',()=>{
   it('formats finish times as a clock time, with the weekday when not today',async()=>{
     const {clockTime}=await import('../src/ui/automaticPanel');
     const now=new Date('2026-11-16T12:00:00');
-    expect(clockTime(new Date('2026-11-16T15:30:00').toISOString(),now)).toMatch(/15:30|3:30/);
-    expect(clockTime(new Date('2026-11-17T09:05:00').toISOString(),now)).toMatch(/^\S+ .*(09|9):05/);
+    expect(clockTime(new Date('2026-11-16T15:30:00').toISOString(),now)).toMatch(/15[:.]30|3[:.]30/);
+    expect(clockTime(new Date('2026-11-17T09:05:00').toISOString(),now)).toMatch(/^\S+ .*(09|9)[:.]05/);
     expect(clockTime(null,now)).toBe('');expect(clockTime('nonsense',now)).toBe('');
   });
 });
