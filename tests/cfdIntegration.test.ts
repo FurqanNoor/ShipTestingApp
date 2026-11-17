@@ -57,3 +57,14 @@ describe('Calm towing outlet',()=>{
     expect(String(wave.files['system/fvOptions'])).not.toContain('calmOutletAbsorber');
   });
 });
+
+describe('Beam-wave morphing zone',()=>{
+  it('ends inside the tank, so rolling never moves the end-wall cells',()=>{
+    const p=extendCaseWithWaves(base(),{kind:'beam-waves',heightM:.01,periodS:.6,inertiaMeasured:true,inertiaKgM2:[.0001,.0008,.00085]});
+    const outer=Number(/outerDistance ([0-9.eE+-]+);/.exec(String(p.files['constant/dynamicMeshDict']))![1]);
+    const g=p.manifest.geometry,d=p.manifest.domain;
+    const nearestEndWall=Math.min(g.minM[0]-d.minM[0],d.maxM[0]-g.maxM[0]);
+    expect(outer).toBeGreaterThan(0);
+    expect(outer).toBeLessThan(nearestEndWall);
+  });
+});

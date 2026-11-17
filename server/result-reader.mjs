@@ -299,7 +299,7 @@ export async function readCfdRunResult(caseDir,options) {
       remember(gaugeFile,'wave-gauge-history');
       if(gaugeFile?.text){
         waves=analyseWaveGauges(gaugeFile.text,{startS:averagingTargetStartTimeS,endS:expectedEndTimeS,targetHeightM:Number(manifest.condition?.heightM),targetPeriodS:wavePeriodS});
-        if(waves?.withinTolerance===false)warnings.push(`Achieved waves differ from the requested regular wave: height ${(100*waves.heightRatio).toFixed(0)}% and period ${(100*waves.periodRatio).toFixed(0)}% of target near the hull (tolerance ±${100*WAVE_HEIGHT_TOLERANCE}% height, ±${100*WAVE_PERIOD_TOLERANCE}% period). Roll responds to the wave actually generated; treat roll as unreliable or refine the wave grid.`);
+        if(waves?.withinTolerance===false)warnings.push(`Achieved waves differ from the requested regular wave: height ${(100*waves.heightRatio).toFixed(0)}% and period ${(100*waves.periodRatio).toFixed(0)}% of target near the hull (tolerance ±${100*WAVE_HEIGHT_TOLERANCE}% height, ±${100*WAVE_PERIOD_TOLERANCE}% period). The gauges stand close to the hull, so the reading includes waves the hull reflects and radiates (in Roihu tests, gauges 66 mm apart differed by up to 40% beside a rolling hull); the incoming wave is set identically for every hull from an empty-tank calibration. A large deviation can still mean a poorly resolved wave: check the gauge histories.`);
       }else warnings.push('No wave-gauge history was found; the achieved wave height was not verified.');
     }catch(error){warnings.push('Wave gauge analysis failed: '+error.message);}
   }
