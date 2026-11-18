@@ -20,7 +20,9 @@ const WAVE_PHASES=['coarse','time-step'];
 export const SPEEDS={quick:['coarse'],full:PHASES,
   // Verification only (never ranked: the leaderboard compares studies of the same speed): medium + fine grids, to
   // measure how far the coarse/medium calm drag is from mesh convergence.
-  'mesh-check':['medium','fine']};
+  'mesh-check':['medium','fine'],
+  // Setup experiments (e.g. wave-maker variants): one Quick-style solve per test, never ranked.
+  experiment:['coarse']};
 export function phasesFor(speed,mode='calm'){
   if(!SPEEDS[speed]||speed==='full')return mode==='calm'?PHASES:WAVE_PHASES;
   return SPEEDS[speed];
@@ -102,10 +104,10 @@ export function assessCondition(condition){
     scope:'Declared mesh and time-step sensitivity diagnostics only (the domain size is fixed by the protocol). Uniform CAD mass assumptions, wave propagation/reflection, flow-model uncertainty and physical accuracy remain unvalidated.'};
 }
 
-function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVersion}){
+function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVersion,experiment}){
   const {conditions,...summary}=plan;
   return {schema:1,id,name:name??plan.name??'Automatic hull study',status:'queued',stage:'Preparing automatic tests',createdAt:now,updatedAt:now,
-    plan:copy(summary),options:{speed,cores,...(backend?{backend}:{}),...(protocolVersion?{protocolVersion}:{})},conditions:conditions.map(({request,...c})=>({...copy(c),speed,status:'pending',stage:'Waiting',runs:[]})),
+    plan:copy(summary),options:{speed,cores,...(experiment?{experiment:copy(experiment)}:{}),...(backend?{backend}:{}),...(protocolVersion?{protocolVersion}:{})},conditions:conditions.map(({request,...c})=>({...copy(c),speed,status:'pending',stage:'Waiting',runs:[]})),
     progress:{conditionsTotal:conditions.length,conditionsFinished:0,solvesFinished:0,solvesMaximum:conditions.reduce((n,c)=>n+phasesFor(speed,c.mode).length,0)},activeJobId:null,error:null,
     physicalValidation:'not-performed',rankable:false};
 }
@@ -119,7 +121,7 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
   const tris=request.trianglesMm;let xmin=Infinity,xmax=-Infinity;
   for(let i=0;i<tris.length;i+=3){xmin=Math.min(xmin,tris[i]);xmax=Math.max(xmax,tris[i]);}
   const lengthM=(xmax-xmin)/1000,period=request.wavePeriodS;
-  if(speed==='quick'){
+  if(speed==='quick'||speed==='experiment'){
     // Calm: 40 hull lengths of towing, averaged over the last 60%. 30 s Roihu runs of real competition-style hulls settled
     // only after ~8-12 s; a 16 L/U run (11.7 s) read 9-23% low by different amounts per hull. 12-30 s is within ~2-5%.
     // Waves: arrival + 8 periods (set by the case generator).
@@ -221,7 +223,7 @@ export class StudyRunner {
     const reference=getResult(condition.runs.find(r=>r.phase==='coarse'));
     const run={phase,status:'preparing'};condition.runs.push(run);condition.stage=`${phase}: preparing`;study.stage=`${condition.label} · ${phase}`;await this.save(study);
     try{
-      const job=await this.runCase(numericalRequest(planned.request,phase,reference,speed),{
+      const job=await this.runCase({...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration&&planned.request.mode!=='calm'?{waveGeneration:study.options.experiment.waveGeneration}:{})},{
         studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
         onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
       });

@@ -6,6 +6,9 @@ export interface WaveCaseSettings {
   kind:'head-waves'|'beam-waves';
   /** Wave-maker amplitude gain from empty-tank calibration (default 1): compensates the systematic height loss of the grid. */
   generationGain?:number;
+  /** Relaxation-zone length in wavelengths and peak relaxation rate in multiples of omega (defaults GEN_WAVELENGTHS, GEN_STRENGTH). */
+  generationWavelengths?:number;
+  generationStrength?:number;
   /** Regular crest-to-trough height H, not significant irregular-sea height Hs. */
   heightM:number;
   /** Regular wave period in initially still water. */
@@ -308,7 +311,8 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
   }
   const files={...base.files};
   // Extend the far (down-wave) side of the domain by the sponge length; the hull and inlet side are unchanged.
-  const spongeLength=SPONGE_WAVELENGTHS*wavelength,genLength=GEN_WAVELENGTHS*wavelength;
+  const spongeLength=SPONGE_WAVELENGTHS*wavelength,genWavelengths=settings.generationWavelengths??GEN_WAVELENGTHS,genStrength=settings.generationStrength??GEN_STRENGTH,genLength=genWavelengths*wavelength;
+  if(!(genWavelengths>=.5&&genWavelengths<=4)||!(genStrength>0&&genStrength<=50))throw new Error('Wave-maker zone must be 0.5-4 wavelengths long with a strength in (0, 50].');
   const domainMin:Vec3=[...b.domain.minM] as Vec3,domainMax:Vec3=[...b.domain.maxM] as Vec3;
   if(moving){domainMax[1]+=spongeLength;domainMin[1]-=genLength;}else{domainMin[0]-=spongeLength;domainMax[0]+=genLength;}
   const spongeMin:Vec3=moving?[domainMin[0]-1,b.domain.maxM[1],domainMin[2]-1]:[domainMin[0],domainMin[1]-1,domainMin[2]-1];
@@ -383,7 +387,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
     const target=moving?`vector(0, ${uh}, ${uz})`:`vector(-(${uh}), 0, ${uz})`;
     waveTargetExpression=`(pos().z() <= ${eta}) ? ${target} : vector(0, 0, 0)`;
     const centre:Vec3=moving?[0,wallCoord+genLength+far,0]:[wallCoord-genLength-far,0,0];
-    files['system/fvOptions']+=`\nwavemaker\n{\n    type acousticDampingSource;\n    selectionMode all;\n    centre ${foamVector(centre)};\n    radius1 ${n(far)};\n    radius2 ${n(far+genLength)};\n    frequency ${n(GEN_STRENGTH*omega/w)};\n    w ${w};\n    URef UWave;\n}\n`;
+    files['system/fvOptions']+=`\nwavemaker\n{\n    type acousticDampingSource;\n    selectionMode all;\n    centre ${foamVector(centre)};\n    radius1 ${n(far)};\n    radius2 ${n(far+genLength)};\n    frequency ${n(genStrength*omega/w)};\n    w ${w};\n    URef UWave;\n}\n`;
     files['0/UWave']=foamHeader('UWave','volVectorField','0')+'dimensions [0 1 -1 0 0 0 0];\ninternalField uniform (0 0 0);\nboundaryField\n{\n    ".*" { type calculated; value uniform (0 0 0); }\n}\n';
   }
   // The calm outlet absorber (and its reference velocity) does not belong in a wave tank; its own sponge replaces it.
@@ -441,7 +445,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
     domain:{...b.domain,minM:domainMin,maxM:domainMax,spongeLengthM:spongeLength},
     conventions:{...b.conventions,flowDirection:[0,0,0]},
     mesh:{...b.mesh,baseCells:[waveGrid.nx,waveGrid.ny,waveGrid.nz],estimatedBaseCells:waveGrid.cells,surfaceLevels:[waveGrid.surfaceLevel,waveGrid.surfaceLevel],finestCellM:Math.min(waveGrid.finest,waveGrid.dz),nearHullSpacingM:waveGrid.fine},
-    waves:{model:'StokesI',heightDefinition:'regular crest-to-trough',periodDefinition:'still-water regular period',originalIrregularPresetEquivalent:false,inletPatch:inlet,absorptionPatch:outlet,generation:{method:'relaxation-zone',gain:settings.generationGain??1,lengthM:genLength,wavelengths:GEN_WAVELENGTHS,maxRateS:GEN_STRENGTH*2*Math.PI/settings.periodS,kinematics:'linear finite-depth (Stokes I)',rampTimeS:ramp},sponge:{lengthM:spongeLength,wavelengths:SPONGE_WAVELENGTHS,zones:1,maxRateS:SPONGE_STRENGTH*2*Math.PI/settings.periodS,minM:spongeMin,maxM:spongeMax},propagationDirection:moving?[0,1,0]:[-1,0,0],waveLengthM:wavelength,waterDepthM:depth,meanCurrentMps:0,boundaryHeightCells:settings.heightM/waveGrid.dz,boundaryWavelengthCells:wavelength/waveGrid.along,backgroundCells:waveGrid.cells,freeSurfaceVerticalCells:Math.round(4*settings.heightM/waveGrid.dz),waveResolutionVerified:false,reflectedWaveFraction:null,sources:[...WAVE_METHOD_SOURCES]},
+    waves:{model:'StokesI',heightDefinition:'regular crest-to-trough',periodDefinition:'still-water regular period',originalIrregularPresetEquivalent:false,inletPatch:inlet,absorptionPatch:outlet,generation:{method:'relaxation-zone',gain:settings.generationGain??1,lengthM:genLength,wavelengths:genWavelengths,maxRateS:genStrength*2*Math.PI/settings.periodS,kinematics:'linear finite-depth (Stokes I)',rampTimeS:ramp},sponge:{lengthM:spongeLength,wavelengths:SPONGE_WAVELENGTHS,zones:1,maxRateS:SPONGE_STRENGTH*2*Math.PI/settings.periodS,minM:spongeMin,maxM:spongeMax},propagationDirection:moving?[0,1,0]:[-1,0,0],waveLengthM:wavelength,waterDepthM:depth,meanCurrentMps:0,boundaryHeightCells:settings.heightM/waveGrid.dz,boundaryWavelengthCells:wavelength/waveGrid.along,backgroundCells:waveGrid.cells,freeSurfaceVerticalCells:Math.round(4*settings.heightM/waveGrid.dz),waveResolutionVerified:false,reflectedWaveFraction:null,sources:[...WAVE_METHOD_SOURCES]},
     verification:{status:'not-run',required:[...b.verification.required,'empty-tank wave gauges: achieved regular H, T, dispersion and phase','global inlet/free-surface wave-grid refinement; near-hull refinement alone is insufficient','incident/reflected-wave separation and absorption/domain sensitivity','repeat statistics after wave travel, ramp and transient decay',...(moving?['verify loaded mass, CG and inertia distribution; calm free-floating equilibrium','mesh-motion quality, heave/roll time-step convergence and complete motion state history']:[])]},
     notes:[...b.notes,
       'Regular Stokes-I waves at zero current only. This is not the original irregular Bretschneider sea, even when a numeric Hs preset is reused as regular height H.',

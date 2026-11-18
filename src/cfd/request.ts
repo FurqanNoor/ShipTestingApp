@@ -16,6 +16,8 @@ export interface CfdCgEstimateSpec {
 /** Physical values use SI with recorded CG provenance; geometry keeps the placed millimetre frame. */
 export interface CfdRunRequest {
   name: string;
+  /** Experiments only (never ranked): wave-maker zone length/strength and a factor on the calibrated gain. */
+  waveGeneration?: { wavelengths?: number; strength?: number; gainScale?: number };
   trianglesMm: number[];
   geometryMode: CfdEnvelopeMode;
   mode: CfdRunMode;
@@ -147,6 +149,16 @@ async function sha256(parts: Uint8Array[]): Promise<string> {
 }
 
 /** Validate an untrusted JSON request, then prepare an actual-geometry solver case. No solver is launched here. */
+/** Experiment-only wave-maker overrides; undefined unless explicitly given for a wave test. */
+function checkedWaveGeneration(v: unknown, mode: CfdRunMode): CfdRunRequest['waveGeneration'] {
+  if (v === undefined || v === null || mode === 'calm') return undefined;
+  if (typeof v !== 'object' || Array.isArray(v)) throw new Error('waveGeneration must be an object.');
+  const o = v as Record<string, unknown>, out: NonNullable<CfdRunRequest['waveGeneration']> = {};
+  if (o.wavelengths !== undefined) out.wavelengths = boundedNumber(o.wavelengths, 'Wave-maker zone (wavelengths)', .5, 4, true);
+  if (o.strength !== undefined) out.strength = boundedNumber(o.strength, 'Wave-maker strength', 0, 50, false);
+  if (o.gainScale !== undefined) out.gainScale = boundedNumber(o.gainScale, 'Wave-maker gain scale', .5, 1.5, true);
+  return Object.keys(out).length ? out : undefined;
+}
 export async function prepareCfdJob(body: unknown, caseId: string): Promise<PreparedCfdJob> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('A CFD request object is required.');
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(caseId)) throw new Error('Case ID must contain only letters, numbers, underscores and hyphens.');
@@ -248,6 +260,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
     massKg, cgM, cgSource, cgEstimate, cgAssumptions, assumptionsConfirmed:cgSource==='cad-estimate', measurementsConfirmed: !automatic,massSource,automation:automatic?{schema:1,protocol:'standard-220-v1'}:undefined,modelCgM,floatingPose,speedMps, minimumWallThicknessM,
     waveHeightM, wavePeriodS, inertiaMeasured: mode === 'beam-waves'&&inertiaSource==='measured', inertiaKgM2,inertiaSource,inertiaTensorKgM2,
     mesh, fidelity, durationS, timeStepS,maxDeltaTS, maxCo, maxCells, domainScale,
+    waveGeneration: checkedWaveGeneration(raw.waveGeneration, mode),
   };
   const encoder = new TextEncoder();
   const geometryHash = await sha256([
@@ -261,6 +274,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
     physics: { rhoWaterKgM3: 998, rhoAirKgM3: 1.2, nuWaterM2S: 1.004e-6, nuAirM2S: 1.5e-5, gravityMps2: 9.81, sigmaNpm: 0.072, flow: 'laminar', contactAngleDeg: 90 },
     domain: { scale: domainScale, upstreamLengths: 2, downstreamLengths: 5, sideLengths: 3, belowKeelLengths: 3 },
     minimumWallThicknessM,
+    ...(request.waveGeneration ? { waveGeneration: request.waveGeneration } : {}),
   };
   let protocolHash = await sha256([encoder.encode(canonical(physicalProtocol))]);
   const sealPrinted = automatic && hull.solverGeometryKind === 'printed-material';
@@ -276,8 +290,9 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
     mesh, fidelity, durationS, timeStepS,maxDeltaTS, maxCo, maxCells, domainScale,
   });
   const preset=automatic&&mode==='beam-waves'?AUTOMATIC_WAVE_PRESETS.find(w=>{const scale=hull.bounds.lengthM/.22;return Math.abs(w.height*scale-waveHeightM!)<1e-10&&Math.abs(w.period*Math.sqrt(scale)-wavePeriodS!)<1e-10;}):undefined;
-  const generationGain=preset?waveGenerationGain(preset,fidelity,mesh):1;
-  if (mode !== 'calm') pkg = extendCaseWithWaves(pkg, { kind: mode, generationGain, heightM: waveHeightM!, periodS: wavePeriodS!, massKg, cgM, inertiaKgM2,inertiaTensorKgM2,inertiaSource,inertiaAssumptions:estimatedMassProperties?.assumptions,rollAxis:pose?pose.rotation.map(row=>row[0]) as HydroPoint:undefined,inertiaMeasured: request.inertiaMeasured });
+  const wg=request.waveGeneration;
+  const generationGain=(preset?waveGenerationGain(preset,fidelity,mesh):1)*(wg?.gainScale??1);
+  if (mode !== 'calm') pkg = extendCaseWithWaves(pkg, { kind: mode, generationGain, generationWavelengths: wg?.wavelengths, generationStrength: wg?.strength, heightM: waveHeightM!, periodS: wavePeriodS!, massKg, cgM, inertiaKgM2,inertiaTensorKgM2,inertiaSource,inertiaAssumptions:estimatedMassProperties?.assumptions,rollAxis:pose?pose.rotation.map(row=>row[0]) as HydroPoint:undefined,inertiaMeasured: request.inertiaMeasured });
   // Different observation windows or boundaries must never compare as one protocol.
   const recordedProtocol = {...physicalProtocol,observation:{durationS:pkg.manifest.numerics.durationS,averaging:pkg.manifest.condition.kind==='calm'?'after-warmup':'final-half-after-warmup'},fidelity,exactDomain:{minM:pkg.manifest.domain.minM,maxM:pkg.manifest.domain.maxM}};
   protocolHash = await sha256([encoder.encode(canonical(recordedProtocol))]);
