@@ -27,9 +27,26 @@ export const SPEEDS={quick:['coarse'],full:PHASES,
   'mesh-check':['medium','fine'],
   // Setup experiments (e.g. wave-maker variants): one Quick-style solve per test, never ranked.
   experiment:['coarse']};
+/**
+ * Quick calm tests run on the medium (finer) mesh (calm 2026-11-19): on 18 Nov the coarse mesh read calm drag -49% to
+ * +44% off the medium mesh, in opposite directions for different hulls, and under-read friction by 35-45% on every hull
+ * checked. Quick wave tests stay on the coarse mesh.
+ */
+const QUICK_CALM_PHASES=['medium'];
 export function phasesFor(speed,mode='calm'){
   if(!SPEEDS[speed]||speed==='full')return mode==='calm'?PHASES:WAVE_PHASES;
+  if(speed==='quick'&&mode==='calm')return QUICK_CALM_PHASES;
   return SPEEDS[speed];
+}
+/**
+ * The solves a condition makes: fixed when the study is created (condition.phases), so a later change of mode
+ * definitions never cancels or re-plans a study that is already running. Older records without the list: a Quick
+ * study that already ran a coarse solve keeps the coarse-only plan it was created with.
+ */
+export function conditionPhases(condition,speed=condition?.speed){
+  if(Array.isArray(condition?.phases)&&condition.phases.length)return condition.phases;
+  if(speed==='quick'&&condition?.runs?.some(r=>r.phase==='coarse'))return ['coarse'];
+  return phasesFor(speed,condition?.mode);
 }
 const TERMINAL=new Set(['completed','failed','cancelled','blocked','interrupted','skipped']);
 const finite=v=>typeof v==='number'&&Number.isFinite(v);
@@ -70,7 +87,7 @@ export function assessCondition(condition){
   const byPhase=new Map(condition.runs.map(run=>[run.phase,run]));
   const coarse=getResult(byPhase.get('coarse')),medium=getResult(byPhase.get('medium')),half=getResult(byPhase.get('time-step'));
   const checks=[],tol=SENSITIVITY_TOLERANCE,pct=Math.round(tol*100);
-  const phases=phasesFor(condition.speed,condition.mode),meshStudy=phases.includes('medium');
+  const phases=conditionPhases(condition),meshStudy=phases.includes('medium');
   checks.push(check('Completed numerical quality',phases.every(p=>safeQuality(getResult(byPhase.get(p)),condition.mode)),
     condition.mode==='beam-waves'?`All ${phases.length} runs need complete, bounded solver histories, both mesh reviews and stationary post-startup RMS roll.`:`All ${phases.length} runs need complete, bounded solver histories, both mesh reviews and stationary post-startup forces.`));
   if(meshStudy){
@@ -113,7 +130,7 @@ export function assessCondition(condition){
 function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVersion,experiment}){
   const {conditions,...summary}=plan;
   return {schema:1,id,name:name??plan.name??'Automatic hull study',status:'queued',stage:'Preparing automatic tests',createdAt:now,updatedAt:now,
-    plan:copy(summary),options:{speed,cores,...(experiment?{experiment:copy(experiment)}:{}),...(backend?{backend}:{}),...(protocolVersion?{protocolVersion}:{})},conditions:conditions.map(({request,...c})=>({...copy(c),speed,status:'pending',stage:'Waiting',runs:[]})),
+    plan:copy(summary),options:{speed,cores,...(experiment?{experiment:copy(experiment)}:{}),...(backend?{backend}:{}),...(protocolVersion?{protocolVersion}:{})},conditions:conditions.map(({request,...c})=>({...copy(c),speed,phases:phasesFor(speed,c.mode),status:'pending',stage:'Waiting',runs:[]})),
     progress:{conditionsTotal:conditions.length,conditionsFinished:0,solvesFinished:0,solvesMaximum:conditions.reduce((n,c)=>n+phasesFor(speed,c.mode).length,0)},activeJobId:null,error:null,
     physicalValidation:'not-performed',rankable:false};
 }
@@ -134,7 +151,7 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
     // Waves: arrival + 8 periods (set by the case generator).
     // Courant-limited adaptive steps instead of a fixed 0.5 ms cap.
     const calm=request.mode==='calm',duration=calm?Math.max(24,40*lengthM/request.speedMps):1;
-    return {...request,fidelity:'quick',durationS:duration,mesh:'coarse',...stepControls(calm),maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
+    return {...request,fidelity:'quick',durationS:duration,mesh:phase==='medium'?'medium':'coarse',...stepControls(calm),maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
   }
   // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium refines the grid by
   // sqrt(2). Same simulated time for every phase (comparisons require it), longer than Quick:
@@ -267,7 +284,7 @@ export class StudyRunner {
    * cannot be prepared and are marked interrupted.
    */
   async runClusterCondition(study,condition,planned,speed){
-    const phases=phasesFor(speed,condition.mode);
+    const phases=conditionPhases(condition,speed);
     // Runs of a check this mode no longer makes (e.g. a wave medium mesh started before the change) are stopped.
     for(const r of condition.runs)if(!phases.includes(r.phase)&&!TERMINAL.has(r.status)){
       r.status='skipped';r.error='Stopped: Full mode no longer runs this check for this test type.';if(r.jobId)await this.cancelCase(r.jobId);
@@ -308,7 +325,7 @@ export class StudyRunner {
           if(study.status==='cancelled')break;
           const condition=study.conditions[index],planned=plan.conditions[index];
           condition.status='running';condition.stage='Preparing coarse mesh';study.stage=`${condition.label} · coarse`;await this.save(study);
-          for(const phase of phasesFor(speed,condition.mode)){
+          for(const phase of conditionPhases(condition,speed)){
             if(study.status==='cancelled')break;
             if(['time-step','domain'].includes(phase)&&!getResult(condition.runs.find(r=>r.phase==='coarse'))){condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});continue;}
             if(!(await this.runPhase(study,condition,planned,phase,speed)))break;

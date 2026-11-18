@@ -28,7 +28,8 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v === undefined
  * 2026-11-18: calm outlet absorber + wave morphing-zone fix. 2026-11-18b (calm): 40 L/U runs averaged after 0.4 of the run.
  */
 // calm 2026-11-18c: Courant 0.4 / 2 ms cap (the old 0.8 / 4 ms read drag 6-21% low). Older calm results are not ranked.
-export const PROTOCOLS = { calm: '2026-11-18c', waves: '2026-11-18' } as const;
+// calm 2026-11-19: Quick calm drag from the medium mesh (the coarse mesh read -49%..+44% off it). Older calm results are not ranked.
+export const PROTOCOLS = { calm: '2026-11-19', waves: '2026-11-18' } as const;
 export const PROTOCOL_VERSION = `calm:${PROTOCOLS.calm};waves:${PROTOCOLS.waves}`;
 
 export interface LeaderboardSettings { protocol: string; calmProtocol: string; wavesProtocol: string; speed: string; backend: string; cores: number | null }

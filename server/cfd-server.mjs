@@ -11,7 +11,7 @@ import os from 'node:os';
 import {zipSync,unzipSync,strToU8} from 'fflate';
 import * as core from './generated/core.mjs';
 import {readCfdRunResult} from './result-reader.mjs';
-import {StudyRunner,numericalRequest,phasesFor} from './study-runner.mjs';
+import {StudyRunner,numericalRequest,phasesFor,conditionPhases} from './study-runner.mjs';
 import {predictRun,learn,remainingStudySeconds} from './estimator.mjs';
 import {explainFailure} from './failure-hints.mjs';
 import {repairHullTriangles} from './geometry-repair.mjs';
@@ -79,7 +79,7 @@ function publicStudy(record){
       const job=run.jobId&&jobs.get(run.jobId);
       if(job)run.live={status:job.status,stage:job.stage,percent:Number.isFinite(job.progress?.percent)?job.progress.percent:0,etaS:Number.isFinite(job.progress?.etaS)?job.progress.etaS:null,slurmState:job.slurmState??null};
     }
-    const planned=pred?.get(condition.id)?.runs?.filter(r=>!r.error)??phasesFor(record.options?.speed,condition.mode).map(phase=>({phase}));
+    const planned=pred?.get(condition.id)?.runs?.filter(r=>!r.error)??conditionPhases(condition,record.options?.speed).map(phase=>({phase}));
     for(const r of planned){
       const weight=r.manifest?Math.max(1,predictS(r.manifest,record.options?.cores??defaultCores,record.options?.backend).totalS):1,run=condition.runs?.find(x=>x.phase===r.phase);
       const fraction=DONE_CONDITION.has(condition.status)||(run&&DONE_CONDITION.has(run.status))?1:run?.live?(run.live.status==='completed'?1:run.live.percent/100):0;

@@ -99,22 +99,27 @@ test('time-weighted motion RMS integrates linear samples exactly and is insensit
   assert.ok(Math.abs(timeWeightedRms(sparse,'x',.5,1)-Math.sqrt(7/12))<1e-14);assert.equal(timeWeightedRms([], 'x'),null);
 });
 
-test('quick studies run one coarse solve per selected condition with quick fidelity',async()=>{
+test('quick studies run one solve per selected condition with quick fidelity: calm on the medium mesh',async()=>{
   const {numericalRequest,phasesFor}=await import('./study-runner.mjs');
-  assert.deepEqual(phasesFor('quick'),['coarse']);assert.equal(phasesFor('anything').length,3);
+  assert.deepEqual(phasesFor('quick','calm'),['medium']);assert.deepEqual(phasesFor('quick','beam-waves'),['coarse']);assert.equal(phasesFor('anything').length,3);
   const calls=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{}});
   const study=await runner.create(plan(2),{id:'quick-study',speed:'quick',cores:3});await runner.running;
   const done=runner.get(study.id);
-  assert.equal(calls.length,2);assert.ok(calls.every(c=>c.context.phase==='coarse'&&c.context.cores===3&&c.request.fidelity==='quick'));
+  assert.equal(calls.length,2);assert.ok(calls.every(c=>c.context.phase==='medium'&&c.request.mesh==='medium'&&c.context.cores===3&&c.request.fidelity==='quick'));
   assert.equal(done.progress.solvesMaximum,2);assert.deepEqual(done.options,{speed:'quick',cores:3});
-  for(const c of done.conditions){assert.equal(c.status,'completed');assert.equal(c.result.quick,true);assert.equal(c.result.numericalSensitivityPassed,null);assert.equal(c.result.rankable,false);assert.equal(c.result.metrics.referenceMesh,'coarse');}
+  for(const c of done.conditions){assert.equal(c.status,'completed');assert.equal(c.result.quick,true);assert.equal(c.result.numericalSensitivityPassed,null);assert.equal(c.result.rankable,false);assert.equal(c.result.metrics.referenceMesh,'medium');}
+  // The Quick calm solve is the same case as Full's medium-mesh solve.
+  const tris0=[0,0,0,200,0,0,0,10,0],qm=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris0},'medium',null,'quick'),fm=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris0},'medium',null,'full');
+  assert.deepEqual(qm,fm);
   const tris=[0,0,0,200,0,0,0,10,0];
   const q=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null,'quick');
   assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.4);assert.ok(Math.abs(q.durationS-Math.max(24,40*.2/.3))<1e-9);
   const full=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null);
   // Full's coarse grid and numerics are Quick's, over a longer window (40 hull lengths, the same as Quick).
   assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.002);assert.equal(full.maxCo,.4);assert.ok(Math.abs(full.durationS-Math.max(24,40*.2/.3))<1e-9);
-  const wave=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'medium',null);assert.equal(wave.mesh,'medium');assert.ok(Math.abs(wave.durationS-25*.45)<1e-9);assert.equal(wave.maxCo,1);
+  // Full's single wave solve is exactly the Quick wave case.
+  const wq=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'coarse',null,'quick'),wf=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'coarse',null,'full');
+  assert.deepEqual(wq,wf);assert.equal(wf.mesh,'coarse');assert.equal(wf.maxCo,1);
 });
 test('full remains the default speed and keeps all five phases',async()=>{
   const calls=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{}});
