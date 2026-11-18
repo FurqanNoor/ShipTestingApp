@@ -556,7 +556,7 @@ const server=http.createServer(async(req,res)=>{
         const ids=Array.isArray(body.conditionIds)&&body.conditionIds.length?body.conditionIds:unfinished;
         if(!ids.length)return json(res,400,{error:'Nothing to re-run: every test finished (blocked tests need a changed hull or load).'});
         const plan=core.createAutomaticPlan({name:record.name,trianglesMm});const problem=selectConditions(plan,ids);if(problem)return json(res,400,{error:problem});
-        const study=await createStudy(plan,trianglesMm,{speed:record.options?.speed??'full',cores:clampCores(Number(record.options?.cores))});
+        const study=await createStudy(plan,trianglesMm,{speed:['quick','full'].includes(body.speed)?body.speed:record.options?.speed??'full',cores:clampCores(Number(record.options?.cores))});
         return json(res,202,publicStudy(studyRunner.get(study.id)));
       }
       if(studyMatch[2]==='download'&&req.method==='GET'){
