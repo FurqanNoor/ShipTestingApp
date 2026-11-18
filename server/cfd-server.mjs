@@ -423,7 +423,7 @@ async function submitToCluster(j){
     j.remoteDir=`${clusterConfig.remoteDir}/runs/${j.id}`;j.timing={startedAt:Date.now()};
     await setState(j,'queued','Uploading case to the cluster');
     append(j,`Uploading case to ${clusterConfig.host} (${j.remoteDir})\n`);
-    await writeFile(resolve(j.dir,'job.sh'),cluster.batchScript(clusterConfig,{name:'hull-'+j.id.slice(0,8),cores:j.cores}));
+    await writeFile(resolve(j.dir,'job.sh'),cluster.batchScript(clusterConfig,{name:'hull-'+j.id.slice(0,8),cores:j.cores,minutes:cluster.timeLimitMinutes(clusterConfig,predictS(j.manifest,j.cores,'cluster')?.totalS)}));
     await cluster.upload(clusterConfig,j.dir,j.remoteDir);
     if(j.cancelRequested)return;
     j.slurmId=await cluster.submit(clusterConfig,j.remoteDir);j.offset=0;j.slurmState='PENDING';

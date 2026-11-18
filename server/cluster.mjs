@@ -160,13 +160,23 @@ export function removeRemote(c,remoteDir){
 }
 
 /** Slurm batch script: one node, all requested cores, the pinned image through Apptainer with a clean environment. */
-export function batchScript(c,{name,cores=c.cores}){
-  const hh=String(c.hours).padStart(2,'0');
+/**
+ * Slurm time limit in minutes: 3x the predicted run plus 30 min, at least 1 h, at most the configured hours. A flat 24 h
+ * limit kept 192-core jobs waiting for hours (backfill only fills gaps a job's limit fits into); on 18 Nov lowering it
+ * to 3 h on the waiting jobs was the fix. A run that still hits the limit is reported as a timeout.
+ */
+export function timeLimitMinutes(c,predictedS){
+  const cap=Math.max(1,c.hours)*60;
+  if(!(predictedS>0))return cap;
+  return Math.min(cap,Math.max(60,Math.ceil(3*predictedS/60)+30));
+}
+export function batchScript(c,{name,cores=c.cores,minutes=c.hours*60}){
+  const m=Math.max(1,Math.round(minutes)),hh=String(Math.floor(m/60)).padStart(2,'0'),mm=String(m%60).padStart(2,'0');
   return ['#!/bin/bash',
     `#SBATCH --job-name=${name}`,`#SBATCH --account=${c.account}`,`#SBATCH --partition=${c.partition}`,
     '#SBATCH --nodes=1','#SBATCH --ntasks=1',`#SBATCH --cpus-per-task=${cores}`,
     ...(c.memoryGb?[`#SBATCH --mem=${c.memoryGb}G`]:[]),
-    `#SBATCH --time=${hh}:00:00`,'#SBATCH --output=service-runner.log',
+    `#SBATCH --time=${hh}:${mm}:00`,'#SBATCH --output=service-runner.log',
     'cd "$SLURM_SUBMIT_DIR"',
     "tr -d '\\r' < Allrun > Allrun.sh",
     // --cleanenv keeps Slurm variables away from the container's own OpenMPI (it then launches ranks on this node).
