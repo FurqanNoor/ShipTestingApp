@@ -183,7 +183,7 @@ export async function poll(c,list){
   // Log bytes per job per poll: at most 4 MB, and about 12 MB in total so one poll stays small with many jobs.
   const chunk=Math.max(262144,Math.min(4194304,Math.floor(12582912/list.length)));
   const parts=list.map(j=>{const id=Number(j.slurmId),off=Math.max(0,Number(j.offset)||0);
-    return `echo "@@JOB ${id}"; s=$(squeue -h -j ${id} -o %T 2>/dev/null); [ -z "$s" ] && s=$(sacct -n -X -j ${id} -o State%20 2>/dev/null | head -1 | tr -d ' '); echo "@@STATE $s"; f='${j.remoteDir}/service-runner.log'; n=$(stat -c %s "$f" 2>/dev/null || echo 0); x=$(tail -c 400 "$f" 2>/dev/null | grep -ao 'HULL_EXIT [0-9]*' | tail -1); echo "@@EXIT $x"; echo "@@SIZE $n"; if [ "$n" -gt ${off} ]; then tail -c +${off+1} "$f" | head -c ${chunk} | base64 -w0; fi; echo; echo "@@END"`;});
+    return `echo "@@JOB ${id}"; s=$(squeue -h -j ${id} -o %T 2>/dev/null); [ -z "$s" ] && s=$(sacct -n -X -j ${id} -o State%20 2>/dev/null | head -1 | tr -d ' '); echo "@@STATE $s"; f='${j.remoteDir}/service-runner.log'; n=$(stat -c %s "$f" 2>/dev/null || echo 0); x=$(tail -c 400 "$f" 2>/dev/null | grep -ao 'HULL_EXIT [0-9]*' | tail -1); echo "@@EXIT $x"; if [ $((n-${off})) -gt ${chunk} ]; then echo "@@SKIP"; echo "@@SIZE $n"; tail -c +$((n-${chunk}+1)) "$f" | head -c ${chunk} | base64 -w0; else echo "@@SIZE $n"; if [ "$n" -gt ${off} ]; then tail -c +${off+1} "$f" | head -c ${chunk} | base64 -w0; fi; fi; echo; echo "@@END"`;});
   // The script goes to bash on stdin: as one command-line argument it was cut off with ~24 jobs ("unexpected EOF").
   const script=parts.join('\n')+'\n';
   const out=await ssh(c,'bash -s',{stdin:()=>Readable.from([script]),timeoutMs:120_000});
@@ -196,8 +196,11 @@ export async function poll(c,list){
     const exitCode=/@@EXIT HULL_EXIT (\d+)/.exec(block)?.[1]??null;
     const b64=(block.split(/@@SIZE \d+\r?\n/)[1]??'').split('@@END')[0].trim();
     const buf=b64?Buffer.from(b64,'base64'):Buffer.alloc(0);
-    // Advance only by what was actually sent (at most 4 MB per poll); a fast log catches up over the next polls.
-    map.set(id,{state,size,bytes:(offsets.get(id)??0)+buf.length,exitCode,text:buf.toString('utf8')});
+    // Normally advance by what was sent. A log more than one chunk behind (36 jobs at once write far faster than one
+    // SSH poll can carry) jumps to its newest chunk instead, so live progress stays current; the complete log is
+    // downloaded with the results when the job ends.
+    const skipped=/@@SKIP/.test(block);
+    map.set(id,{state,size,bytes:skipped?size:(offsets.get(id)??0)+buf.length,exitCode,skipped,text:buf.toString('utf8')});
   }
   return map;
 }

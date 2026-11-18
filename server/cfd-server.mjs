@@ -369,7 +369,8 @@ async function finishRun(j){
     j.timing.finishedAt=Date.now();
     // Calibrate time estimates from runs that reached their full simulated time on this machine.
     if(j.result.quality?.completedTime===true&&j.progress?.solveStartedAt&&j.progress?.stepCount>10){
-      const sample={manifest:j.manifest,actualCells:j.result.solverRun?.actualMeshCells,steps:j.progress.stepCount,solveWallS:(j.timing.finishedAt-j.progress.solveStartedAt)/1000,meshWallS:(j.progress.solveStartedAt-(j.timing.runningAt??j.timing.startedAt))/1000,cores:j.cores};
+      const steps=j.result.solverRun?.actualDeltaTS?.count??j.progress.stepCount,solveFrom=j.logSkipped?(j.timing.runningAt??j.progress.solveStartedAt):j.progress.solveStartedAt;
+      const sample={manifest:j.manifest,actualCells:j.result.solverRun?.actualMeshCells,steps,solveWallS:(j.timing.finishedAt-solveFrom)/1000,meshWallS:(j.progress.solveStartedAt-(j.timing.runningAt??j.timing.startedAt))/1000,cores:j.cores};
       if(j.backend==='cluster'){clusterCalibration=learn(clusterCalibration,{...sample,saturation:CLUSTER_SATURATION});void saveJson(CLUSTER_CALIBRATION,clusterCalibration);}
       else{calibration=learn(calibration,sample);void saveCalibration();}
     }
@@ -407,6 +408,11 @@ async function pollCluster(){
       for(const j of list)j.lastConnError=null;
       for(const j of list){
         const s=states.get(String(j.slurmId));if(!s||!clusterJobs.has(j.id))continue;
+        if(s.skipped&&s.text){
+          // Jumped ahead: drop the cut first line and restart the rate window (sim time jumps over unseen steps).
+          j.partial='';j.logSkipped=true;if(j.progress)j.progress.samples=[];
+          const cut=s.text.indexOf('\n');s.text='[… earlier solver output skipped to keep up; the full log comes with the results …]\n'+(cut>=0?s.text.slice(cut+1):'');
+        }
         if(s.text){append(j,s.text);j.offset=s.bytes;await writeFile(resolve(j.dir,'service-runner.log'),s.text,{flag:'a'}).catch(()=>{});}
         const state=s.state.replace(/[+].*$/,'');j.slurmState=state||j.slurmState;
         if(cluster.RUNNING_STATES.has(state)){
