@@ -54,6 +54,12 @@ export function conditionPhases(condition,speed=condition?.speed){
  * coupling: accelerationRelaxation 0.2 and 3 outer correctors.
  */
 export const STABILISED_COUPLING={relaxation:.2,outerCorrectors:3};
+/**
+ * Escalation: a 150 g wide flat scow still diverged in heave with 0.2 / 3 (later: t = 0.31 s instead of 0.024 s), so a
+ * second level relaxes harder, iterates more and halves the flow Courant limit.
+ */
+export const COUPLING_LEVELS=[{name:"stabilised",coupling:STABILISED_COUPLING},{name:"strongly stabilised",coupling:{relaxation:.1,outerCorrectors:5},maxCo:.5}];
+export const SOLVER_UNSTABLE="Solver became unstable";
 export const COUPLING_FAILURE='Hull motion became numerically unstable';
 const TERMINAL=new Set(['completed','failed','cancelled','blocked','interrupted','skipped']);
 const finite=v=>typeof v==='number'&&Number.isFinite(v);
@@ -273,21 +279,31 @@ export class StudyRunner {
     }
     return true;
   }
-  /** One automatic retry with stronger coupling for a wave run whose hull motion blew up (new and re-attached runs). */
+  /**
+   * Automatic retries with escalating coupling for a wave run whose hull motion blew up (new and re-attached runs).
+   * After a first retry, a plain "Solver became unstable" also escalates: it is the same divergence, only later.
+   */
   async retryUnstable(study,condition,planned,run,phase,speed){
-    if(!(run.status==='failed'&&planned&&planned.request.mode!=='calm'&&!run.coupling&&run.hint?.title===COUPLING_FAILURE&&study.status!=='cancelled'))return;
-    const reference=getResult(condition.runs.find(r=>r.phase==='coarse'&&r!==run));
-    const request={...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration?{waveGeneration:study.options.experiment.waveGeneration}:{}),coupling:STABILISED_COUPLING};
-    run.firstAttempt={jobId:run.jobId,error:run.error};run.coupling='stabilised';
-    if(study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);
-    if(condition.hint===run.hint)condition.hint=null;
-    run.status='running';run.error=null;run.hint=null;condition.stage=`${phase}: retrying with stronger hull-motion coupling`;await this.save(study);
-    try{
-      const retry=await this.runCase(request,{studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
-        onQueued:async id=>{run.jobId=id;run.status='running';(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: retry queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);}});
-      this.applyJob(study,condition,run,retry);
-    }catch(error){run.status='failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);}
-    finally{if(run.jobId&&study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);await this.save(study);}
+    if(!planned||planned.request.mode==='calm')return;
+    for(;;){
+      const level=COUPLING_LEVELS.findIndex(l=>l.name===run.coupling)+1;
+      const unstable=run.hint?.title===COUPLING_FAILURE||(!!run.coupling&&run.hint?.title===SOLVER_UNSTABLE);
+      if(!(run.status==='failed'&&unstable&&level<COUPLING_LEVELS.length&&study.status!=='cancelled'))return;
+      const L=COUPLING_LEVELS[level];
+      const reference=getResult(condition.runs.find(r=>r.phase==='coarse'&&r!==run));
+      const request={...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration?{waveGeneration:study.options.experiment.waveGeneration}:{}),coupling:L.coupling,...(L.maxCo?{maxCo:L.maxCo}:{})};
+      (run.attempts??=[]).push({jobId:run.jobId,error:run.error,coupling:run.coupling??'default'});
+      run.firstAttempt??={jobId:run.jobId,error:run.error};run.coupling=L.name;
+      if(study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);
+      if(condition.hint===run.hint)condition.hint=null;
+      run.status='running';run.error=null;run.hint=null;condition.stage=`${phase}: retrying with ${L.name} hull-motion coupling`;await this.save(study);
+      try{
+        const retry=await this.runCase(request,{studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
+          onQueued:async id=>{run.jobId=id;run.status='running';(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: retry queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);}});
+        this.applyJob(study,condition,run,retry);
+      }catch(error){run.status='failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);}
+      finally{if(run.jobId&&study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);await this.save(study);}
+    }
   }
   /** Record a finished job on its run (shared by normal runs and runs re-attached after a restart). */
   applyJob(study,condition,run,job){

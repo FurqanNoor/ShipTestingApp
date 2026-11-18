@@ -197,3 +197,18 @@ test('a re-attached wave run whose hull motion blew up is also retried with stro
   assert.equal(calls.length,1);assert.deepEqual(calls[0].request.coupling,STABILISED_COUPLING);
   assert.equal(c.runs.length,1);assert.equal(c.runs[0].status,'completed');assert.equal(c.runs[0].coupling,'stabilised');assert.equal(c.runs[0].firstAttempt.jobId,'j');
 });
+
+test('coupling retries escalate once more when the stabilised retry also diverges',async()=>{
+  const {COUPLING_LEVELS,COUPLING_FAILURE}=await import('./study-runner.mjs');
+  const calls=[];
+  const runner=new StudyRunner({cancelCase:async()=>{},runCase:async(request,context)=>{
+    calls.push({request,context});const id='job-'+calls.length;await context.onQueued(id);
+    if(calls.length===1)return {id,status:'failed',error:'Angular velocity: (9e+28 0 0)',hint:{title:COUPLING_FAILURE,hint:'x'},result:null};
+    if(calls.length===2)return {id,status:'failed',error:'Floating point exception',hint:{title:'Solver became unstable',hint:'x'},result:null};
+    return {id,status:'completed',result:solverResult(context.phase)};}});
+  const p=plan(1);p.conditions[0].mode='beam-waves';p.conditions[0].request.mode='beam-waves';p.conditions[0].request.wavePeriodS=.45;
+  await runner.create(p,{id:'esc',speed:'quick'});await runner.running;
+  const r=runner.get('esc').conditions[0].runs[0];
+  assert.equal(calls.length,3);assert.deepEqual(calls[2].request.coupling,COUPLING_LEVELS[1].coupling);assert.equal(calls[2].request.maxCo,.5);
+  assert.equal(r.status,'completed');assert.equal(r.coupling,'strongly stabilised');assert.equal(r.attempts.length,2);assert.equal(r.firstAttempt.jobId,'job-1');
+});
