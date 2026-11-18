@@ -56,4 +56,14 @@ describe('CFD hackathon leaderboard',()=>{
     const before=cfdLeaderboard([waves1,other]).rows.find(r=>r.name==='Hull')!;
     expect(before.status).toBe('incomplete');expect(before.note).toMatch(/current solver setup: 150g-calm, 250g-calm/);
   });
+
+  it('shows a running re-run as running, and never lets a failed re-run hide an earlier valid result',()=>{
+    const first=study('H',[calm(150,.01),calm(250,.01),wave(150,2),{...wave(250,2),status:'interrupted',result:null}],opts,'2026-11-18T01:00:00Z');
+    const rerun=study('H',[{...wave(250,2),status:'running',result:null}],opts,'2026-11-18T02:00:00Z');
+    const r1=cfdLeaderboard([full('A',.01,5),first,rerun]).rows.find(r=>r.name==='H')!;
+    expect(r1.note).toMatch(/Still running: 250g-high/);
+    const good=study('G',[calm(150,.01),calm(250,.01),wave(150,2),wave(250,2)],opts,'2026-11-18T01:00:00Z');
+    const badRerun=study('G',[{...wave(250,2),status:'failed',result:null}],opts,'2026-11-18T02:00:00Z');
+    expect(cfdLeaderboard([full('A',.01,5),good,badRerun]).rows.find(r=>r.name==='G')!.status).toBe('ranked');
+  });
 });

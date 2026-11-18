@@ -96,8 +96,11 @@ export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; re
     for (const s of same) for (const c of arr(s.conditions)) {
       const id = str(c.id);
       if (!current(s, c)) { outdated.add(id); continue; }
-      const prev = conditions.get(id);
-      if (!prev || TERMINAL.has(str(c.status)) || !TERMINAL.has(str(prev.status))) conditions.set(id, c);
+      // Studies are visited oldest first: a newer real result (completed, or a sink/capsize verdict) replaces anything;
+      // otherwise the newest entry stands unless a real result already exists (an interrupted or failed re-run does
+      // not hide a valid earlier result, and a running re-run shows as running rather than an old interruption).
+      const prev = conditions.get(id), real = (x: R) => str(x.status) === 'completed' || DESIGN_FAILURES.has(str(rec(x.hint).verdict));
+      if (!prev || real(c) || !real(prev)) conditions.set(id, c);
     }
     merged.set(name, { latest: same[same.length - 1], conditions, outdated });
   }
@@ -140,7 +143,11 @@ export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; re
       if (str(c.mode) === 'calm') { const d = num(m.meanDragN); if (d === null) rerun.push(`${id} has no drag`); else drag.push(d * 1000); }
       else { const r = num(m.maxRollDeg); if (r === null) rerun.push(`${id} has no roll`); else roll.push(Math.abs(r)); }
     }
-    if (rerun.length) return { ...base, failures, status: 'incomplete' as const, note: `Re-run needed: ${rerun.join('; ')}.` };
+    if (rerun.length) {
+      const running = rerun.filter(x => x.endsWith('still running')).map(x => x.replace(/ still running$/, '')), redo = rerun.filter(x => !x.endsWith('still running'));
+      const note = [redo.length ? `Re-run needed: ${redo.join('; ')}.` : '', running.length ? `Still running: ${running.join(', ')}.` : ''].filter(Boolean).join(' ');
+      return { ...base, failures, status: 'incomplete' as const, note };
+    }
     return { ...base, failures, status: 'ranked' as const, dragMN: mean(drag), rollDeg: mean(roll), gmMm: mean(gm),
       note: failures ? `${failures} test${failures === 1 ? '' : 's'} failed (sinks or capsizes); ranked below hulls without failures.` : '' };
   });
