@@ -236,9 +236,9 @@ export async function readCfdRunResult(caseDir,options) {
   const wave=Number.isFinite(wavePeriodS)&&wavePeriodS>0;
   const waveDurationSufficient=wave?expectedEndTimeS>=10*wavePeriodS:null;
   const warmup=Number(manifest.numerics.recommendedWarmupS);
-  // Calm towing averages everything after the warmup (at least the last 3/4 of the run): with the absorbing outlet the
-  // drag is stationary after about 5 L/U, and the longer window halves the run-to-run (decomposition) scatter of a final-half mean.
-  const averagingTargetStartTimeS=wave?Math.max(expectedEndTimeS*.5,5*wavePeriodS,Number.isFinite(warmup)?warmup:0):Math.max(expectedEndTimeS*.25,Number.isFinite(warmup)?warmup:0);
+  // Calm towing averages the last 60% of the run (and never before the warmup): 30 s runs showed the drag of real hulls
+  // settles after ~8-12 s, so a 40 L/U run averaged from 0.4 of its length is within a few percent of the settled value.
+  const averagingTargetStartTimeS=wave?Math.max(expectedEndTimeS*.5,5*wavePeriodS,Number.isFinite(warmup)?warmup:0):Math.max(expectedEndTimeS*.4,Number.isFinite(warmup)?warmup:0);
   let forces=null,forceSampleCount=0,lastForceTimeS=null;
   if(forceLocation?.restartSegments>1)warnings.push('Multiple force restart directories exist. Only the latest numeric start segment was read; older data were not merged or substituted.');
   if(forceLocation&&!forceLocation.path)warnings.push('The latest force restart directory has no dimensional force file. Older segments were not substituted.');

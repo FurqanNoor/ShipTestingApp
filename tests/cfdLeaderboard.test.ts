@@ -28,7 +28,7 @@ describe('CFD hackathon leaderboard',()=>{
     const {rows,reference}=cfdLeaderboard([full('A',.01,5),full('B',.02,3),other,old]);
     expect(reference?.backend).toBe('cluster');
     expect(rows.find(r=>r.name==='Local run')!.status).toBe('different-settings');
-    expect(rows.find(r=>r.name==='Old setup')!.status).toBe('different-settings');
+    const oldRow=rows.find(r=>r.name==='Old setup')!;expect(oldRow.status).toBe('incomplete');expect(oldRow.note).toMatch(/current solver setup/);
     expect(rows.filter(r=>r.status==='ranked').map(r=>r.name).sort()).toEqual(['A','B']);
   });
   it('needs every test of the common programme, and asks for re-runs of numerical failures',()=>{
@@ -43,5 +43,17 @@ describe('CFD hackathon leaderboard',()=>{
     const rerun=study('Fixed',[wave(250,3)],opts,'2026-11-18T03:00:00Z');
     const {rows}=cfdLeaderboard([full('A',.01,5),first,rerun]);
     const f=rows.find(r=>r.name==='Fixed')!;expect(f.status).toBe('ranked');expect(f.rollDeg).toBeCloseTo(2.5);
+  });
+
+  it('combines re-run calm tests on a newer calm setup with wave tests on the unchanged wave setup',()=>{
+    const waves1=study('Hull',[calm(150,.001),calm(250,.001),wave(150,4),wave(250,4)],{...opts,protocolVersion:'2026-11-18'},'2026-11-18T01:00:00Z');
+    const calm2=study('Hull',[calm(150,.010),calm(250,.020)],{...opts,protocolVersion:'calm:2026-11-18b;waves:2026-11-18'},'2026-11-18T03:00:00Z');
+    const other=study('Other',[calm(150,.012),calm(250,.022),wave(150,3),wave(250,3)],{...opts,protocolVersion:'calm:2026-11-18b;waves:2026-11-18'},'2026-11-18T03:30:00Z');
+    const {rows,reference}=cfdLeaderboard([waves1,calm2,other]);
+    expect(reference?.calmProtocol).toBe('2026-11-18b');expect(reference?.wavesProtocol).toBe('2026-11-18');
+    const h=rows.find(r=>r.name==='Hull')!;expect(h.status).toBe('ranked');expect(h.dragMN).toBeCloseTo(15);expect(h.rollDeg).toBeCloseTo(4);
+    // Without the calm re-run, the old calm results do not count.
+    const before=cfdLeaderboard([waves1,other]).rows.find(r=>r.name==='Hull')!;
+    expect(before.status).toBe('incomplete');expect(before.note).toMatch(/current solver setup: 150g-calm, 250g-calm/);
   });
 });

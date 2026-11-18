@@ -102,18 +102,18 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
   for(let i=0;i<tris.length;i+=3){xmin=Math.min(xmin,tris[i]);xmax=Math.max(xmax,tris[i]);}
   const lengthM=(xmax-xmin)/1000,period=request.wavePeriodS;
   if(speed==='quick'){
-    // Calm: 16 hull lengths of towing, averaged after the ~5 L/U start-up (the absorbing outlet makes the drag stationary;
-    // long Roihu runs: 16- vs 32-core means agree within 1%, the old 6 L/U window was ~11% low and core-count dependent).
+    // Calm: 40 hull lengths of towing, averaged over the last 60%. 30 s Roihu runs of real competition-style hulls settled
+    // only after ~8-12 s; a 16 L/U run (11.7 s) read 9-23% low by different amounts per hull. 12-30 s is within ~2-5%.
     // Waves: arrival + 8 periods (set by the case generator).
     // Courant-limited adaptive steps instead of a fixed 0.5 ms cap.
-    const calm=request.mode==='calm',duration=calm?Math.max(8,16*lengthM/request.speedMps):1;
+    const calm=request.mode==='calm',duration=calm?Math.max(24,40*lengthM/request.speedMps):1;
     return {...request,fidelity:'quick',durationS:duration,mesh:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
   }
   // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium and fine refine the
   // grid by sqrt(2) each. Same simulated time for every phase (comparisons require it), longer than Quick:
-  // calm the same 16 hull lengths as Quick (averaged after start-up), waves 25 periods (~12 measured after warm-up).
+  // calm the same 40 hull lengths as Quick (averaged over the last 60%), waves 25 periods (~12 measured after warm-up).
   const calm=request.mode==='calm';
-  const duration=calm?Math.max(8,16*lengthM/request.speedMps):25*period;
+  const duration=calm?Math.max(24,40*lengthM/request.speedMps):25*period;
   const base={...request,fidelity:'quick',durationS:duration,mesh:['medium','fine'].includes(phase)?phase:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
   if(phase==='time-step'){
     // Halve both the Courant limit and the cap, so the solver's actual step really halves.

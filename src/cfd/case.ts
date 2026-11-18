@@ -159,7 +159,7 @@ export function generateOpenFoamCase(input:CfdCaseInput):CfdCasePackage {
   const maxDomain:Vec3=[max[0]+2*L*domainScale,B/2+3*L*domainScale,Math.max(L*domainScale,D-input.load.draftM+L/2*domainScale)];
   const cells=maxDomain.map((v,i)=>Math.max(2,Math.ceil((v-minDomain[i])/baseCell))) as [number,number,number];
   const baseCount=cells[0]*cells[1]*cells[2];if(baseCount>maxCells)throw new Error('The base domain exceeds the maximum mesh-cell budget.');
-  const duration=input.durationS??Math.max(8,16*L/Math.max(input.speedMps,.05));positive(duration,'Run duration');if(duration>600)throw new Error('A single run is limited to 600 simulated seconds.');
+  const duration=input.durationS??Math.max(24,40*L/Math.max(input.speedMps,.05));positive(duration,'Run duration');if(duration>600)throw new Error('A single run is limited to 600 simulated seconds.');
   const quick=fidelity==='quick',maxAlphaCo=quick?.5:.25;
   const maxCo=input.maxCo??.25;positive(maxCo,'Courant limit');if(maxCo>(quick?1:.5))throw new Error(quick?'Use a Courant limit no larger than 1 for quick runs.':'Use a Courant limit no larger than 0.5 for this VOF setup.');
   const dt=input.timeStepS??Math.min(.001,.2*finestCell/Math.max(input.speedMps,.05));positive(dt,'Initial time step');

@@ -22,10 +22,15 @@ const arr = (v: unknown): R[] => (Array.isArray(v) ? v.map(rec) : []);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string => (typeof v === 'string' ? v : v === undefined || v === null ? '' : String(v));
 
-/** Bump when a change to the solver setup makes new results incomparable with old ones. */
-export const PROTOCOL_VERSION = '2026-11-18';
+/**
+ * Solver-setup version per test type. Bump one when a change makes new results of that type incomparable with old ones;
+ * results of the other type stay valid (e.g. calm runs were lengthened without changing wave runs).
+ * 2026-11-18: calm outlet absorber + wave morphing-zone fix. 2026-11-18b (calm): 40 L/U runs averaged after 0.4 of the run.
+ */
+export const PROTOCOLS = { calm: '2026-11-18b', waves: '2026-11-18' } as const;
+export const PROTOCOL_VERSION = `calm:${PROTOCOLS.calm};waves:${PROTOCOLS.waves}`;
 
-export interface LeaderboardSettings { protocol: string; speed: string; backend: string; cores: number | null }
+export interface LeaderboardSettings { protocol: string; calmProtocol: string; wavesProtocol: string; speed: string; backend: string; cores: number | null }
 export interface LeaderboardRow {
   name: string; studyId: string; createdAt: string; settings: LeaderboardSettings; settingsLabel: string;
   status: 'ranked' | 'incomplete' | 'different-settings';
@@ -35,26 +40,34 @@ export interface LeaderboardRow {
 
 const TERMINAL = new Set(['completed', 'failed', 'blocked', 'cancelled', 'interrupted']);
 const DESIGN_FAILURES = new Set(['sinks', 'stability-failure']);
+const modeOf = (c: R) => (str(c.mode) === 'calm' ? 'calm' : 'waves');
+const shown = (p: string) => p || 'before 2026-11-18';
+const protocolText = (calm: string, waves: string) => (calm === waves ? shown(calm) : `calm ${shown(calm)}, waves ${shown(waves)}`);
 
+/** Settings recorded with a study. A single-version stamp (e.g. "2026-11-18") applies to both test types; none means older. */
 export function settingsOf(study: unknown): LeaderboardSettings {
-  const o = rec(rec(study).options);
-  return { protocol: str(o.protocolVersion) || 'before 2026-11-18', speed: str(o.speed) || 'full', backend: str(o.backend) || 'local', cores: num(o.cores) };
+  const o = rec(rec(study).options), v = str(o.protocolVersion);
+  const part = (k: string) => (/calm:|waves:/.test(v) ? new RegExp(`${k}:([^;]+)`).exec(v)?.[1] ?? '' : v);
+  const calmProtocol = part('calm'), wavesProtocol = part('waves');
+  return { protocol: protocolText(calmProtocol, wavesProtocol), calmProtocol, wavesProtocol,
+    speed: str(o.speed) || 'full', backend: str(o.backend) || 'local', cores: num(o.cores) };
 }
-export const settingsKey = (s: LeaderboardSettings) => `${s.protocol}|${s.speed}|${s.backend}|${s.cores ?? ''}`;
+/** Hulls compare only at the same Quick/Full mode, backend and cores; setup versions are checked per test type. */
+export const settingsKey = (s: LeaderboardSettings) => `${s.speed}|${s.backend}|${s.cores ?? ''}`;
 export const settingsLabel = (s: LeaderboardSettings) =>
   `${s.speed === 'quick' ? 'Quick' : 'Full'} · ${s.backend === 'cluster' ? 'cluster' : 'this computer'} · ${s.cores ?? '?'} cores · setup ${s.protocol}`;
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; reference: LeaderboardSettings | null; conditionIds: string[] } {
-  // Studies per hull name (a re-run of unfinished tests is a separate study of the same hull).
+  // Studies per hull name (a re-run of some tests is a separate study of the same hull).
   const byHull = new Map<string, R[]>();
   for (const s of studies.map(rec)) {
     if (!arr(s.conditions).length) continue;
     const name = str(s.name) || 'Hull';
     byHull.set(name, [...(byHull.get(name) ?? []), s]);
   }
-  // Reference settings: those used by the most hulls (ties: the newest protocol).
+  // Reference settings: those used by the most hulls.
   const counts = new Map<string, { n: number; s: LeaderboardSettings }>();
   for (const list of byHull.values()) {
     for (const k of new Set(list.map(s => settingsKey(settingsOf(s))))) {
@@ -62,23 +75,39 @@ export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; re
       counts.set(k, { n: (counts.get(k)?.n ?? 0) + 1, s: st });
     }
   }
-  const reference = [...counts.values()].sort((a, b) => b.n - a.n || b.s.protocol.localeCompare(a.s.protocol))[0]?.s ?? null;
-  const refKey = reference ? settingsKey(reference) : '';
-  // Each hull's tests at the reference settings, newest finished result per test (any finished entry beats a running one).
-  const merged = new Map<string, { latest: R; conditions: Map<string, R> }>();
+  const referenceBase = [...counts.values()].sort((a, b) => b.n - a.n)[0]?.s ?? null;
+  const refKey = referenceBase ? settingsKey(referenceBase) : '';
+  // Reference setup per test type: the newest used at the reference settings. Older results of that type do not count.
+  const atRef = studies.map(rec).filter(s => settingsKey(settingsOf(s)) === refKey).map(settingsOf);
+  const newest = (k: 'calmProtocol' | 'wavesProtocol') => atRef.map(s => s[k]).sort().pop() ?? '';
+  const reference: LeaderboardSettings | null = referenceBase
+    ? { ...referenceBase, calmProtocol: newest('calmProtocol'), wavesProtocol: newest('wavesProtocol'), protocol: protocolText(newest('calmProtocol'), newest('wavesProtocol')) }
+    : null;
+  const current = (s: R, c: R) => {
+    const st = settingsOf(s);
+    return !!reference && (modeOf(c) === 'calm' ? st.calmProtocol === reference.calmProtocol : st.wavesProtocol === reference.wavesProtocol);
+  };
+  // Each hull's tests at the reference settings and current setups, newest finished result per test.
+  const merged = new Map<string, { latest: R; conditions: Map<string, R>; outdated: Set<string> }>();
   for (const [name, list] of byHull) {
     const same = list.filter(s => settingsKey(settingsOf(s)) === refKey).sort((a, b) => str(a.createdAt).localeCompare(str(b.createdAt)));
     if (!same.length) continue;
-    const conditions = new Map<string, R>();
+    const conditions = new Map<string, R>(), outdated = new Set<string>();
     for (const s of same) for (const c of arr(s.conditions)) {
-      const id = str(c.id), prev = conditions.get(id);
+      const id = str(c.id);
+      if (!current(s, c)) { outdated.add(id); continue; }
+      const prev = conditions.get(id);
       if (!prev || TERMINAL.has(str(c.status)) || !TERMINAL.has(str(prev.status))) conditions.set(id, c);
     }
-    merged.set(name, { latest: same[same.length - 1], conditions });
+    merged.set(name, { latest: same[same.length - 1], conditions, outdated });
   }
   // Reference programme: the largest set of tests that most hulls ran.
   const programmes = new Map<string, number>();
-  for (const { conditions } of merged.values()) { const k = [...conditions.keys()].sort().join(','); programmes.set(k, (programmes.get(k) ?? 0) + 1); }
+  for (const { conditions } of merged.values()) {
+    if (!conditions.size) continue;
+    const k = [...conditions.keys()].sort().join(',');
+    programmes.set(k, (programmes.get(k) ?? 0) + 1);
+  }
   const programme = [...programmes.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0] ?? '';
   const conditionIds = programme ? programme.split(',') : [];
 
@@ -90,9 +119,15 @@ export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; re
       place: null, dragMN: null, rollDeg: null, gmMm: null, failures: 0, scoreDrag: null, scoreRoll: null, scoreStability: null, total: null };
     if (!m)
       return { ...base, status: 'different-settings' as const, note: `Tested with different settings (${settingsLabel(settings)}). Re-run with ${reference ? settingsLabel(reference) : 'the reference settings'}.` };
+    const missing = conditionIds.filter(id => !m.conditions.has(id));
+    if (missing.length) {
+      const old = missing.filter(id => m.outdated.has(id)), never = missing.filter(id => !m.outdated.has(id));
+      const note = old.length
+        ? `Re-run with the current solver setup: ${old.join(', ')}${never.length ? `; not tested: ${never.join(', ')}` : ''}.`
+        : `Not tested: ${missing.join(', ')}. Run the same tests as the other hulls.`;
+      return { ...base, status: 'incomplete' as const, note };
+    }
     const byId = m.conditions;
-    const missing = conditionIds.filter(id => !byId.has(id));
-    if (missing.length) return { ...base, status: 'incomplete' as const, note: `Not tested: ${missing.join(', ')}. Run the same tests as the other hulls.` };
     const drag: number[] = [], roll: number[] = [], gm: number[] = [], rerun: string[] = [];
     let failures = 0;
     for (const id of conditionIds) {
