@@ -25,17 +25,15 @@ test('batch script runs the pinned image on one node with all cores and a clean 
 
 function plan(count){return {schema:1,protocol:'standard-220-v1',name:'p',geometryMode:'closed-envelope',distribution:'shell',geometryNotes:[],assumptions:[],defaults:{loadsKg:[.15,.25,.35],maxCells:5000000},conditions:Array.from({length:count},(_,i)=>({id:'c'+i,label:'C'+i,massKg:.25,mode:'calm',request:{trianglesMm:[0,0,0,200,0,0,0,30,40],massKg:.25,speedMps:.3,mode:'calm',maxCells:5000000}}))};}
 
-test('on a cluster every condition starts at once, and other phases follow each coarse run in parallel',async()=>{
+test('on a cluster every solve of every condition starts at once',async()=>{
   let running=0,peak=0;const order=[];
   const runner=new StudyRunner({slots:()=>({studies:5,runs:64}),cancelCase:async()=>{},runCase:async(req,ctx)=>{
     running++;peak=Math.max(peak,running);order.push(`${ctx.conditionId}:${ctx.phase}`);await ctx.onQueued('job-'+order.length);
     await new Promise(r=>setTimeout(r,20));running--;return {id:'job-'+order.length,status:'completed',result:{source:'OpenFOAM'}};}});
   await runner.create(plan(3),{id:'cluster-study',speed:'full',backend:'cluster'});await runner.running;
   const r=runner.get('cluster-study');
-  assert.equal(order.length,15);assert.equal(r.status,'completed');assert.equal(r.options.backend,'cluster');
-  // 3 coarse runs together, then 3 x 4 other phases together.
-  assert.deepEqual(order.slice(0,3).map(o=>o.split(':')[1]),['coarse','coarse','coarse']);
-  assert.ok(peak>=12,`peak concurrency ${peak}`);
+  assert.equal(order.length,9);assert.equal(r.status,'completed');assert.equal(r.options.backend,'cluster');
+  assert.equal(peak,9,`peak concurrency ${peak}`);
 });
 
 test('several studies run side by side when the cluster has slots, and queue beyond them',async()=>{
@@ -60,13 +58,12 @@ test('Roihu daily SSH certificate validity is read and a missing certificate is 
   assert.equal(other.required,false);
 });
 
-test('on a cluster, a failed coarse run skips the time-step and domain checks instead of running them',async()=>{
-  const order=[];
+test('on a cluster, a failed coarse run leaves the condition with the medium result and an inconclusive time-step check',async()=>{
   const runner=new StudyRunner({slots:()=>({studies:5,runs:64}),cancelCase:async()=>{},runCase:async(req,ctx)=>{
-    order.push(ctx.phase);await ctx.onQueued('job-'+order.length);
-    return ctx.phase==='coarse'?{id:'job-'+order.length,status:'failed',error:'Floating point exception',result:null}:{id:'job-'+order.length,status:'completed',result:{source:'OpenFOAM'}};}});
+    await ctx.onQueued('job-'+ctx.phase);
+    return ctx.phase==='coarse'?{id:'job-c',status:'failed',error:'Floating point exception',result:null}:{id:'job-'+ctx.phase,status:'completed',result:{source:'OpenFOAM'}};}});
   await runner.create(plan(1),{id:'s',speed:'full',backend:'cluster'});await runner.running;
-  assert.deepEqual(order.sort(),['coarse','fine','medium']);
-  const runs=runner.get('s').conditions[0].runs;
-  assert.deepEqual(runs.filter(r=>r.status==='skipped').map(r=>r.phase).sort(),['domain','time-step']);
+  const c=runner.get('s').conditions[0];
+  assert.deepEqual(c.runs.map(r=>r.phase).sort(),['coarse','medium','time-step']);
+  assert.equal(c.result.numericalSensitivityPassed,false);
 });

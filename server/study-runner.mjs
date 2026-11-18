@@ -1,12 +1,17 @@
 /** Bounded unattended CFD studies. Passing sensitivity checks is not physical validation. */
 import {explainFailure} from './failure-hints.mjs';
 /**
- * Full: a three-grid study (coarse, medium, fine; sqrt(2) refinement) plus time-step and domain checks. The time-step
- * and domain checks are made on the coarse grid: it is the cheapest and the most sensitive, so a pass there is
- * conservative, and they finish early instead of after the expensive fine run.
+ * Full: three solves per condition, all started at once on a cluster: coarse (the Quick setup), medium (grid refined by
+ * sqrt(2)) and a halved time step on the coarse grid. The reported value is the medium-grid result.
+ * Dropped from the earlier five-solve study: the fine grid (8-10 h per wave test, which made Full an overnight job)
+ * and the 50% larger domain (on the first measured Full study it moved calm drag by -27% to +22%, i.e. inside the
+ * run's own slow drag wander, so it did not tell a real boundary effect apart from noise).
  */
-const PHASES=['coarse','time-step','domain','medium','fine'];
-/** quick: one fast screening solve per condition. full: mesh/time-step/domain sensitivity (5 solves). */
+const PHASES=['coarse','medium','time-step'];
+/** Allowed relative change for a pass. Calm drag wanders about +-10% over 3 s blocks of a 17.5 s averaging window, so
+ * changes much below 5% cannot be resolved; a smaller bar would fail every hull on noise. */
+export const SENSITIVITY_TOLERANCE=.05;
+/** quick: one fast screening solve per condition. full: mesh and time-step sensitivity (3 solves). */
 export const SPEEDS={quick:['coarse'],full:PHASES};
 export function phasesFor(speed){return SPEEDS[speed]??SPEEDS.full;}
 const TERMINAL=new Set(['completed','failed','cancelled','blocked','interrupted','skipped']);
@@ -46,29 +51,24 @@ function safeQuality(result,mode){
 /** Uses actual output only; thresholds are declared numerical diagnostics, never accuracy percentages. */
 export function assessCondition(condition){
   const byPhase=new Map(condition.runs.map(run=>[run.phase,run]));
-  const coarse=getResult(byPhase.get('coarse')),medium=getResult(byPhase.get('medium')),fine=getResult(byPhase.get('fine'));
-  const half=getResult(byPhase.get('time-step')),domain=getResult(byPhase.get('domain'));
-  const checks=[];
+  const coarse=getResult(byPhase.get('coarse')),medium=getResult(byPhase.get('medium')),half=getResult(byPhase.get('time-step'));
+  const checks=[],tol=SENSITIVITY_TOLERANCE,pct=Math.round(tol*100);
   const phases=phasesFor(condition.speed);
   checks.push(check('Completed numerical quality',phases.every(p=>safeQuality(getResult(byPhase.get(p)),condition.mode)),
-    condition.mode==='beam-waves'?'All five runs need complete, bounded solver histories, both mesh reviews and stationary post-startup RMS roll.':'All five runs need complete, bounded solver histories, both mesh reviews and stationary post-startup forces.'));
-  const meshComparable=comparable(coarse,medium)&&comparable(medium,fine);
-  const distinct=meshComparable&&cells(coarse)<cells(medium)&&cells(medium)<cells(fine);
-  checks.push(check('Three distinct meshes',!!distinct,'Actual cell counts must strictly increase on three otherwise matching physical cases.'));
-  const previous=meshComparable?difference(coarse,medium,condition.mode):null,meshChange=meshComparable?difference(medium,fine,condition.mode):null;
-  checks.push(check('Mesh sensitivity',distinct&&meshChange!==null&&previous!==null?meshChange<=.02&&meshChange<=previous:null,
-    condition.mode==='beam-waves'?'Finest-pair RMS roll change must be at most 2% and no larger than the preceding change; tiny responses are inconclusive.':'Finest-pair drag change must be at most 2% and no larger than the preceding change; near-zero drag is inconclusive.',{relativeChange:meshChange,threshold:.02,precedingRelativeChange:previous}));
+    condition.mode==='beam-waves'?'All three runs need complete, bounded solver histories, both mesh reviews and stationary post-startup RMS roll.':'All three runs need complete, bounded solver histories, both mesh reviews and stationary post-startup forces.'));
+  const meshComparable=comparable(coarse,medium);
+  const distinct=meshComparable&&cells(coarse)<cells(medium);
+  checks.push(check('Two distinct meshes',!!distinct,'Actual cell counts must increase from the coarse to the medium mesh on otherwise matching physical cases.'));
+  const meshChange=distinct?difference(coarse,medium,condition.mode):null;
+  checks.push(check('Mesh sensitivity',distinct&&meshChange!==null?meshChange<=tol:null,
+    condition.mode==='beam-waves'?`Coarse-to-medium RMS roll change must be at most ${pct}%; tiny responses are inconclusive.`:`Coarse-to-medium drag change must be at most ${pct}%; near-zero drag is inconclusive.`,{relativeChange:meshChange,threshold:tol}));
   const actualFineDt=coarse?.solverRun?.actualDeltaTS?.maximum,actualHalfDt=half?.solverRun?.actualDeltaTS?.maximum;
   const dtComparable=comparable(coarse,half)&&cells(coarse)===cells(half);
   const dtReduced=dtComparable&&finite(actualFineDt)&&actualFineDt>0&&finite(actualHalfDt)&&actualHalfDt>0&&actualHalfDt<=actualFineDt*.6;
   checks.push(check('Actual time-step reduction',!!dtReduced,'The largest recorded solver time step must decrease by at least 40%; changing an inactive cap alone is inconclusive.'));
   const dtChange=dtComparable?difference(coarse,half,condition.mode):null;
-  checks.push(check('Time-step sensitivity',dtReduced&&dtChange!==null?dtChange<=.02:null,'Coarse-grid reference and half-step response must differ by at most 2%.',{relativeChange:dtChange,threshold:.02}));
-  const domainComparable=comparable(coarse,domain,true),scale=coarse?.manifest?.domain?.scale,larger=domain?.manifest?.domain?.scale;
-  const expanded=domainComparable&&finite(scale)&&finite(larger)&&larger>=scale*1.49;
-  const domainChange=domainComparable?difference(coarse,domain,condition.mode):null;
-  checks.push(check('Domain sensitivity',expanded&&domainChange!==null?domainChange<=.02:null,'A domain enlarged by 50% must change response by at most 2%, using the same observation duration.',{relativeChange:domainChange,threshold:.02}));
-  const reference=fine??medium??coarse,referenceRun=reference?[...byPhase.values()].find(r=>r.result===reference):null;
+  checks.push(check('Time-step sensitivity',dtReduced&&dtChange!==null?dtChange<=tol:null,`Coarse-grid reference and half-step response must differ by at most ${pct}%.`,{relativeChange:dtChange,threshold:tol}));
+  const reference=medium??coarse,referenceRun=reference?[...byPhase.values()].find(r=>r.result===reference):null;
   const metrics=reference?{
     referenceJobId:referenceRun?.jobId??null,referenceMesh:referenceRun?.phase??null,
     meanDragN:finite(reference.forces?.meanDragN)?reference.forces.meanDragN:null,
@@ -86,7 +86,7 @@ export function assessCondition(condition){
       scope:'QUICK screening run: one coarse solve with a shortened observation window. No mesh, time-step or domain sensitivity was checked. Use Full mode before relying on these numbers.'};
   }
   return {checks,metrics,numericalSensitivityPassed:checks.every(c=>c.passed===true),physicalValidation:'not-performed',rankable:false,
-    scope:'Declared mesh/time/domain sensitivity diagnostics only. Uniform CAD mass assumptions, wave propagation/reflection, flow-model uncertainty and physical accuracy remain unvalidated.'};
+    scope:'Declared mesh and time-step sensitivity diagnostics only (the domain size is fixed by the protocol). Uniform CAD mass assumptions, wave propagation/reflection, flow-model uncertainty and physical accuracy remain unvalidated.'};
 }
 
 function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVersion}){
@@ -97,6 +97,12 @@ function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVe
     progress:{conditionsTotal:conditions.length,conditionsFinished:0,solvesFinished:0,solvesMaximum:conditions.length*phases.length},activeJobId:null,error:null,
     physicalValidation:'not-performed',rankable:false};
 }
+/**
+ * Time-step controls. Calm: Courant 0.4 and a 2 ms cap. On the first Full study (SWATH hull, 150/250/350 g) halving the
+ * earlier 0.8 / 4 ms raised calm drag by +16%, +6% and +21%, always upward: a real time-step bias, not noise. Waves keep
+ * Courant 1 / 4 ms (their own interface Courant limit applies; see waves.ts).
+ */
+export function stepControls(calm){return calm?{timeStepS:.0005,maxDeltaTS:.002,maxCo:.4}:{timeStepS:.001,maxDeltaTS:.004,maxCo:1};}
 export function numericalRequest(request,phase,fineResult,speed='full'){
   const tris=request.trianglesMm;let xmin=Infinity,xmax=-Infinity;
   for(let i=0;i<tris.length;i+=3){xmin=Math.min(xmin,tris[i]);xmax=Math.max(xmax,tris[i]);}
@@ -107,14 +113,14 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
     // Waves: arrival + 8 periods (set by the case generator).
     // Courant-limited adaptive steps instead of a fixed 0.5 ms cap.
     const calm=request.mode==='calm',duration=calm?Math.max(24,40*lengthM/request.speedMps):1;
-    return {...request,fidelity:'quick',durationS:duration,mesh:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
+    return {...request,fidelity:'quick',durationS:duration,mesh:'coarse',...stepControls(calm),maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
   }
-  // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium and fine refine the
-  // grid by sqrt(2) each. Same simulated time for every phase (comparisons require it), longer than Quick:
+  // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium refines the grid by
+  // sqrt(2). Same simulated time for every phase (comparisons require it), longer than Quick:
   // calm the same 40 hull lengths as Quick (averaged over the last 60%), waves 25 periods (~12 measured after warm-up).
   const calm=request.mode==='calm';
   const duration=calm?Math.max(24,40*lengthM/request.speedMps):25*period;
-  const base={...request,fidelity:'quick',durationS:duration,mesh:['medium','fine'].includes(phase)?phase:'coarse',timeStepS:.001,maxDeltaTS:.004,maxCo:calm?.8:1,maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
+  const base={...request,fidelity:'quick',durationS:duration,mesh:['medium','fine'].includes(phase)?phase:'coarse',...stepControls(calm),maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
   if(phase==='time-step'){
     // Halve both the Courant limit and the cap, so the solver's actual step really halves.
     base.timeStepS/=2;base.maxDeltaTS/=2;base.maxCo/=2;
@@ -235,7 +241,7 @@ export class StudyRunner {
     }
   }
   /**
-   * Cluster: the coarse run first (it also preflights the condition), then every other phase at once. Phases that
+   * Cluster: every phase of the condition at once. Phases that
    * already have a job (after a restart) are waited for instead of submitted again. planned=null: unsubmitted phases
    * cannot be prepared and are marked interrupted.
    */
@@ -256,12 +262,9 @@ export class StudyRunner {
       if(!planned){condition.runs.push({phase,status:'interrupted',error:'Not submitted before the app restarted.'});return true;}
       return this.runPhase(study,condition,planned,phase,speed);
     };
-    if(!(await ensure(phases[0]))){this.finishCondition(study,condition);await this.save(study);return;}
-    // Time-step and domain checks compare against the coarse result: without one they are skipped (as in the
-    // sequential path) instead of spending cluster time on runs that cannot be assessed.
-    const hasCoarse=!!getResult(condition.runs.find(r=>r.phase==='coarse'));
-    for(const phase of phases.slice(1))if(!hasCoarse&&['time-step','domain'].includes(phase)&&!condition.runs.some(r=>r.phase===phase))condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});
-    await Promise.all(phases.slice(1).filter(phase=>hasCoarse||!['time-step','domain'].includes(phase)).map(ensure));
+    // Every solve starts at once: they are independent, and the comparisons are made when all have finished. This saves
+    // a whole coarse run of waiting. A geometry/load preflight failure blocks all of them the same way.
+    await Promise.all(phases.map(ensure));
     this.finishCondition(study,condition);await this.save(study);
   }
   async execute(study,plan){

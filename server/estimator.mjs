@@ -19,7 +19,10 @@ export const DEFAULTS={
   'waves:quick':{secondsPerCellStep:2.1e-5,dtPerFinestCell:.7,cellGrowth:.98,meshSecondsPerCell:1.8e-4}, // measured: 307k-cell catamaran, 4 cores
   'waves:standard':{secondsPerCellStep:2.4e-5,dtPerFinestCell:.3,cellGrowth:.95,meshSecondsPerCell:1.8e-4},
 };
-const KEYS=['secondsPerCellStep','dtPerFinestCell','cellGrowth','meshSecondsPerCell'];
+/** Courant limit the default/legacy dtPerFinestCell values were measured at; time steps scale with the Courant limit. */
+export const REFERENCE_COURANT={calm:.8,waves:1};
+const KEYS=['secondsPerCellStep','dtPerFinestCellPerCo','cellGrowth','meshSecondsPerCell'];
+const refCo=key=>REFERENCE_COURANT[key.split(':')[0]]??1;
 const finite=v=>typeof v==='number'&&Number.isFinite(v)&&v>0;
 
 export function runKey(manifest){
@@ -31,8 +34,10 @@ export function runKey(manifest){
 export function parameters(key,calibration={}){
   const base={...(DEFAULTS[key]??DEFAULTS['calm:standard'])},own=calibration.entries?.[key];
   const speed=finite(calibration.machineSpeedFactor)?calibration.machineSpeedFactor:1;
-  const out={...base,secondsPerCellStep:base.secondsPerCellStep*speed,calibrated:false,samples:0};
-  if(own)for(const k of KEYS)if(finite(own[k]))out[k]=own[k];
+  const out={...base,dtPerFinestCellPerCo:base.dtPerFinestCell/refCo(key),secondsPerCellStep:base.secondsPerCellStep*speed,calibrated:false,samples:0};
+  // Older calibrations stored the step per finest cell at the reference Courant limit.
+  const legacy=own&&!finite(own.dtPerFinestCellPerCo)&&finite(own.dtPerFinestCell)?{dtPerFinestCellPerCo:own.dtPerFinestCell/refCo(key)}:{};
+  if(own)for(const k of KEYS){const v=own[k]??legacy[k];if(finite(v))out[k]=v;}
   if(own?.samples)Object.assign(out,{calibrated:true,samples:own.samples});
   return out;
 }
@@ -43,7 +48,8 @@ export function predictRun(manifest,{cores=1,calibration,saturation}={}){
   const n=manifest?.numerics??{},mesh=manifest?.mesh??{};
   const cells=Math.max(1,(Number(mesh.estimatedBaseCells)||1)*p.cellGrowth);
   const dtCap=finite(n.maxDeltaTS)?n.maxDeltaTS:.001;
-  const dt=Math.max(1e-7,Math.min(dtCap,p.dtPerFinestCell*(finite(mesh.finestCellM)?mesh.finestCellM:.003)));
+  const co=finite(n.maxCo)?n.maxCo:refCo(key);
+  const dt=Math.max(1e-7,Math.min(dtCap,p.dtPerFinestCellPerCo*co*(finite(mesh.finestCellM)?mesh.finestCellM:.003)));
   const steps=(finite(n.durationS)?n.durationS:1)/dt;
   const solveS=steps*cells*p.secondsPerCellStep/parallelSpeedup(cores,saturation);
   const meshS=cells*p.meshSecondsPerCell;
@@ -57,11 +63,12 @@ export function learn(calibration={},sample){
   const key=runKey(manifest),mesh=manifest.mesh??{},n=manifest.numerics??{};
   const measured={
     secondsPerCellStep:solveWallS*parallelSpeedup(cores,saturation)/(steps*actualCells),
-    dtPerFinestCell:finite(n.durationS)&&finite(mesh.finestCellM)?n.durationS/steps/mesh.finestCellM:undefined,
+    dtPerFinestCellPerCo:finite(n.durationS)&&finite(mesh.finestCellM)?n.durationS/steps/mesh.finestCellM/(finite(n.maxCo)?n.maxCo:refCo(key)):undefined,
     cellGrowth:finite(mesh.estimatedBaseCells)?actualCells/mesh.estimatedBaseCells:undefined,
     meshSecondsPerCell:finite(meshWallS)?meshWallS/actualCells:undefined,
   };
-  const entries={...(calibration.entries??{})},prev=entries[key]??{},next={samples:(prev.samples??0)+1};
+  const entries={...(calibration.entries??{})},stored=entries[key]??{},next={samples:(stored.samples??0)+1};
+  const prev=!finite(stored.dtPerFinestCellPerCo)&&finite(stored.dtPerFinestCell)?{...stored,dtPerFinestCellPerCo:stored.dtPerFinestCell/refCo(key)}:stored;
   // Recent runs weigh more (machine load and Docker limits change), but one odd run cannot swing it fully.
   const w=prev.samples?.5:1;
   for(const k of KEYS){const m=measured[k],old=prev[k];next[k]=finite(m)?(finite(old)?old*(1-w)+m*w:m):old;}

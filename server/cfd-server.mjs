@@ -116,7 +116,7 @@ const planFor=async(name,trianglesMm)=>{
   return {plan:structuredClone(plan),fix};
 };
 const geometryKey=tris=>createHash('sha256').update(Buffer.from(new Float64Array(tris).buffer)).digest('hex').slice(0,32);
-const slimManifest=m=>({condition:{kind:m.condition?.kind},mesh:{fidelity:m.mesh?.fidelity,estimatedBaseCells:m.mesh?.estimatedBaseCells,finestCellM:m.mesh?.finestCellM},numerics:{durationS:m.numerics?.durationS,maxDeltaTS:m.numerics?.maxDeltaTS}});
+const slimManifest=m=>({condition:{kind:m.condition?.kind},mesh:{fidelity:m.mesh?.fidelity,estimatedBaseCells:m.mesh?.estimatedBaseCells,finestCellM:m.mesh?.finestCellM},numerics:{durationS:m.numerics?.durationS,maxDeltaTS:m.numerics?.maxDeltaTS,maxCo:m.numerics?.maxCo}});
 /** Prepare (but never run) every solve a condition would make, to preflight it and size its mesh. */
 async function prepareEstimates(geomKey,condition,speed){
   const key=`${geomKey}|${condition.id}|${speed}`;
@@ -133,12 +133,23 @@ async function prepareEstimates(geomKey,condition,speed){
   estimateCache.set(key,pending);if(estimateCache.size>3000)estimateCache.delete(estimateCache.keys().next().value);
   return pending;
 }
-const predictS=(manifest,cores,backend='local')=>backend==='cluster'?predictRun(manifest,{cores:clusterConfig.cores,calibration:clusterCalibration,saturation:clusterConfig.cores}):predictRun(manifest,{cores,calibration});
+/** A cluster node scales well past one desktop's saturation (384 cores per Roihu node). */
+const CLUSTER_SATURATION=512,CELLS_PER_CORE=5000,MAX_CLUSTER_CORES=192;
+/**
+ * Cores for one cluster job: the configured count for Quick-sized meshes, more for larger meshes so each core keeps
+ * about 5000 cells (64 cores was the measured optimum at ~330k cells). Rounded to 32 so jobs pack onto nodes.
+ */
+function clusterCoresFor(manifest){
+  const base=clusterConfig.cores,cells=predictRun(manifest,{cores:base,calibration:clusterCalibration,saturation:CLUSTER_SATURATION}).cells;
+  if(!(cells>0))return base;
+  return Math.max(base,Math.min(MAX_CLUSTER_CORES,Math.max(base,Math.ceil(cells/CELLS_PER_CORE/32)*32)));
+}
+const predictS=(manifest,cores,backend='local')=>backend==='cluster'?predictRun(manifest,{cores:clusterCoresFor(manifest),calibration:clusterCalibration,saturation:CLUSTER_SATURATION}):predictRun(manifest,{cores,calibration});
 function summariseCondition(condition,entry,cores,backend='local'){
   const first=entry.runs[0],blocked=!!first?.error;
   const runs=entry.runs.map(r=>r.error?{phase:r.phase,error:r.error,hint:r.hint}:{phase:r.phase,cells:predictS(r.manifest,cores,backend).cells,predictedS:predictS(r.manifest,cores,backend).totalS,simulatedS:r.manifest.numerics.durationS});
-  // On the cluster the first (coarse) solve runs, then all other phases at once: wall time is first + slowest other.
-  const ok=runs.filter(r=>Number.isFinite(r.predictedS)),parallelS=ok.length?ok[0].predictedS+Math.max(0,...ok.slice(1).map(r=>r.predictedS)):0;
+  // On the cluster every solve of a condition runs at once: its wall time is the slowest one.
+  const ok=runs.filter(r=>Number.isFinite(r.predictedS)),parallelS=Math.max(0,...ok.map(r=>r.predictedS));
   return {id:condition.id,label:condition.label,mode:condition.mode,blocked,error:blocked?first.error:null,hint:blocked?first.hint:null,
     laterPhaseError:!blocked&&entry.runs.find(r=>r.error)?.error||null,predictedS:backend==='cluster'?parallelS:runs.reduce((t,r)=>t+(r.predictedS??0),0),runs};
 }
@@ -162,15 +173,15 @@ function studyRemaining(record){
   if(TERMINAL_STUDY.has(record.status))return {remainingS:0};
   const pred=studyPredictions.get(record.id);if(!pred)return null;
   if(record.options?.backend==='cluster'){
-    // Parallel: each condition needs its unfinished coarse run, then the slowest unfinished other phase.
+    // Parallel: every solve runs at once, so each condition needs its slowest unfinished solve.
     let worst=0,slowest=null;
     for(const c of record.conditions){
       const entry=pred.get(c.id);if(!entry)return null;if(DONE_CONDITION.has(c.status))continue;
       const left=entry.runs.filter(r=>!r.error).map(r=>{const run=c.runs.find(x=>x.phase===r.phase),j=run?.jobId?jobs.get(run.jobId):null;
         if(run&&DONE_CONDITION.has(run.status))return 0;
         return runRemainingS(j,r.manifest);});
-      const ok=entry.runs.filter(r=>!r.error),rest=left.slice(1),longest=Math.max(0,...rest),total=(left[0]??0)+longest;
-      if(total>worst){worst=total;slowest=`${c.label} · ${(longest>0?ok[1+rest.indexOf(longest)]:ok[0])?.phase??''}`;}
+      const ok=entry.runs.filter(r=>!r.error),total=Math.max(0,...left);
+      if(total>worst){worst=total;slowest=`${c.label} · ${ok[left.indexOf(total)]?.phase??''}`;}
     }
     return {remainingS:worst,activeRunS:worst,slowest,basedOnFinishedRuns:Object.keys(clusterCalibration.entries??{}).length>0};
   }
@@ -307,7 +318,7 @@ async function enqueueCase(body,context={}){
   const j={id,dir,name:summary.name,container:`hull-cfd-${id}`,status:'queued',stage:'Queued',createdAt:new Date().toISOString(),log:[],request:summary,manifest:prepared.package.manifest,hydro:prepared.hydro,geometryHash:prepared.geometryHash,protocolHash:prepared.protocolHash,
     studyId:context.studyId??null,conditionId:context.conditionId??null,studyPhase:context.phase??null,cores:clampCores(context.cores??body?.cores),lineCount:0,listeners:new Set(),
     backend:(context.backend??(context.studyId?'local':clusterReady()?'cluster':'local'))==='cluster'?'cluster':'local'};
-  if(j.backend==='cluster')j.cores=clusterConfig.cores;
+  if(j.backend==='cluster')j.cores=clusterCoresFor(j.manifest);
   jobs.set(id,j);await save(j);
   let done;
   if(context.studyId)done=new Promise(resolveJob=>jobWaiters.set(id,resolveJob));
@@ -359,7 +370,7 @@ async function finishRun(j){
     // Calibrate time estimates from runs that reached their full simulated time on this machine.
     if(j.result.quality?.completedTime===true&&j.progress?.solveStartedAt&&j.progress?.stepCount>10){
       const sample={manifest:j.manifest,actualCells:j.result.solverRun?.actualMeshCells,steps:j.progress.stepCount,solveWallS:(j.timing.finishedAt-j.progress.solveStartedAt)/1000,meshWallS:(j.progress.solveStartedAt-(j.timing.runningAt??j.timing.startedAt))/1000,cores:j.cores};
-      if(j.backend==='cluster'){clusterCalibration=learn(clusterCalibration,{...sample,saturation:clusterConfig.cores});void saveJson(CLUSTER_CALIBRATION,clusterCalibration);}
+      if(j.backend==='cluster'){clusterCalibration=learn(clusterCalibration,{...sample,saturation:CLUSTER_SATURATION});void saveJson(CLUSTER_CALIBRATION,clusterCalibration);}
       else{calibration=learn(calibration,sample);void saveCalibration();}
     }
     await setState(j,'completed','Completed — convergence and physical validation pending');

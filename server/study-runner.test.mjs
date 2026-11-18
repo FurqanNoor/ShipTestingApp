@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import {StudyRunner,assessCondition} from './study-runner.mjs';
 import {timeWeightedRms} from './result-reader.mjs';
 
-// Run order: time-step and domain checks are made on the coarse grid, before the expensive medium and fine runs.
-const phases=['coarse','time-step','domain','medium','fine'];
+// Full: coarse, medium mesh and a halved time step on the coarse mesh.
+const phases=['coarse','medium','time-step'];
 function solverResult(phase,{mode='calm',value,cellCount,actualDt}={}){
-  const index=phases.indexOf(phase),responses=[1,.995,.99,.985,.984];
+  const index=Math.max(0,phases.indexOf(phase)),responses=[1,.984,.99];
   return {source:'OpenFOAM',geometryHash:'actual-synthetic-fixture-geometry-hash',protocolHash:phase==='domain'?'domain-variant-protocol-hash':'matching-reference-protocol-hash',
     manifest:{condition:{kind:mode,heightM:mode==='calm'?undefined:.007,periodS:mode==='calm'?undefined:.45},speedMps:mode==='calm'?.3:0,
       load:{massKg:.25,cgM:[.1,0,.015],cgSource:'cad-estimate',cgMeasured:false},physics:{densityWaterKgM3:998},
       domain:{scale:phase==='domain'?1.5:1},numerics:{durationS:40,initialDeltaTS:phase==='time-step'?.00025:.0005,maxDeltaTS:phase==='time-step'?.00025:.0005},
       ...(mode==='beam-waves'?{motion:{inertiaKgM2:[.0001,.0002,.00025],inertiaSource:'cad-estimate'}}:{})},
-    solverRun:{actualMeshCells:cellCount??[1000,1000,1500,2000,4000][index],actualDeltaTS:{maximum:actualDt??(phase==='time-step'?.00025:.0005)}},
+    solverRun:{actualMeshCells:cellCount??[1000,2000,1000][index],actualDeltaTS:{maximum:actualDt??(phase==='time-step'?.00025:.0005)}},
     forces:{meanDragN:mode==='calm'?(value??responses[index]):0},
     ...(mode==='beam-waves'?{motion:{rollRmsDeg:value??responses[index],heaveRmsM:.001,maxAbsRollDeg:1.5,rollRmsDriftWithinTolerance:true}}:{}),
     hydro:{buoyancyN:2.45,gmM:.01,freeboardM:.02},
@@ -26,43 +26,43 @@ function plan(count=2){return {schema:1,protocol:'standard-220-v1',name:'Automat
 function successfulCase(calls){return async(request,context)=>{calls.push({request,context});const id='job-'+calls.length;await context.onQueued(id);return {id,status:'completed',result:solverResult(context.phase)};};}
 
 test('complete genuine-output fixtures can pass declared sensitivity diagnostics without granting physical validation',()=>{
-  const r=assessCondition(condition());assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.rankable,false);assert.equal(r.physicalValidation,'not-performed');assert.equal(r.metrics.referenceMesh,'fine');
+  const r=assessCondition(condition());assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.rankable,false);assert.equal(r.physicalValidation,'not-performed');assert.equal(r.metrics.referenceMesh,'medium');
 });
-test('identical actual cell counts cannot masquerade as three refined meshes',()=>{
-  const c=condition();c.runs[3].result.solverRun.actualMeshCells=1000;const r=assessCondition(c);assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.checks.find(c=>c.name==='Three distinct meshes').passed,false);
+test('identical actual cell counts cannot masquerade as two refined meshes',()=>{
+  const c=condition();c.runs[1].result.solverRun.actualMeshCells=1000;const r=assessCondition(c);assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.checks.find(c=>c.name==='Two distinct meshes').passed,false);
 });
 test('mesh comparisons require recorded matching physical protocol hashes',()=>{
-  const c=condition();delete c.runs[3].result.protocolHash;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
-  c.runs[3].result.protocolHash='different-load-or-pose';assert.equal(assessCondition(c).checks.find(c=>c.name==='Three distinct meshes').passed,false);
+  const c=condition();delete c.runs[1].result.protocolHash;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+  c.runs[1].result.protocolHash='different-load-or-pose';assert.equal(assessCondition(c).checks.find(c=>c.name==='Two distinct meshes').passed,false);
 });
 test('an inactive halved timestep cap does not pass actual timestep sensitivity',()=>{
-  const c=condition();c.runs[1].result.solverRun.actualDeltaTS.maximum=.0005;const r=assessCondition(c);assert.equal(r.checks.find(c=>c.name==='Actual time-step reduction').passed,false);assert.equal(r.numericalSensitivityPassed,false);
+  const c=condition();c.runs[2].result.solverRun.actualDeltaTS.maximum=.0005;const r=assessCondition(c);assert.equal(r.checks.find(c=>c.name==='Actual time-step reduction').passed,false);assert.equal(r.numericalSensitivityPassed,false);
 });
 test('wave comparisons use RMS roll rather than a near-zero mean longitudinal force',()=>{
   const r=assessCondition(condition('beam-waves'));assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.metrics.meanDragN,0);assert.equal(r.metrics.rollRmsDeg,.984);
+  const big=condition();big.runs[1].result.forces.meanDragN=.9;assert.equal(assessCondition(big).checks.find(c=>c.name==='Mesh sensitivity').passed,false,'a 10% mesh change fails');
 });
 test('unsettled wave response, failed detailed meshes and missing genuine channels remain inconclusive',()=>{
   for(const mutate of [r=>{r.motion.rollRmsDriftWithinTolerance=false;},r=>{r.quality.detailedMeshOkay=false;},r=>{r.source='empirical-preview';}]){
-    const c=condition('beam-waves');mutate(c.runs[4].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+    const c=condition('beam-waves');mutate(c.runs[1].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
   }
 });
-test('changed physical observations and failed domain enlargement cannot pass comparison',()=>{
-  const c=condition();c.runs[2].result.manifest.numerics.durationS=50;assert.equal(assessCondition(c).checks.find(c=>c.name==='Domain sensitivity').passed,null);
-  c.runs[2].result.manifest.numerics.durationS=40;c.runs[2].result.manifest.domain.scale=1;assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+test('a changed observation window makes the time-step comparison inconclusive',()=>{
+  const c=condition();c.runs[2].result.manifest.numerics.durationS=50;assert.equal(assessCondition(c).checks.find(c=>c.name==='Time-step sensitivity').passed,null);
 });
-test('a blocked fine mesh retains only the available genuine earlier result',()=>{
-  const c=condition();c.runs=c.runs.filter(r=>['coarse','medium'].includes(r.phase)).concat({phase:'fine',status:'blocked',error:'Mesh budget exceeded'});const r=assessCondition(c);assert.equal(r.metrics.referenceMesh,'medium');assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.rankable,false);
+test('a blocked medium mesh retains only the available genuine coarse result',()=>{
+  const c=condition();c.runs=c.runs.filter(r=>r.phase!=='medium').concat({phase:'medium',status:'blocked',error:'Mesh budget exceeded'});const r=assessCondition(c);assert.equal(r.metrics.referenceMesh,'coarse');assert.equal(r.numericalSensitivityPassed,false);assert.equal(r.rankable,false);
 });
-test('runner schedules exactly five distinct numerical cases per condition with bounded common protocol',async()=>{
+test('runner schedules exactly three distinct numerical cases per condition with bounded common protocol',async()=>{
   const calls=[],snapshots=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{},persist:async s=>snapshots.push(s)});
   const created=await runner.create(plan(),{id:'study-fixture'});await runner.running;const r=runner.get(created.id);
-  assert.equal(calls.length,10);assert.deepEqual(calls.slice(0,5).map(c=>c.context.phase),phases);assert.equal(r.progress.solvesFinished,10);assert.equal(r.progress.conditionsFinished,2);assert.equal(r.status,'completed');
-  assert.equal(new Set(calls.slice(0,5).map(c=>c.request.durationS)).size,1);assert.equal(calls[1].request.maxDeltaTS,.002);assert.equal(calls[1].request.maxCo,.4);assert.equal(calls[2].request.domainScale,1.5);assert.ok(calls.every(c=>c.request.maxCells<=5000000));
+  assert.equal(calls.length,6);assert.deepEqual(calls.slice(0,3).map(c=>c.context.phase),phases);assert.equal(r.progress.solvesFinished,6);assert.equal(r.progress.conditionsFinished,2);assert.equal(r.status,'completed');
+  assert.equal(new Set(calls.slice(0,3).map(c=>c.request.durationS)).size,1);assert.equal(calls[0].request.maxCo,.4);assert.equal(calls[0].request.maxDeltaTS,.002);assert.equal(calls[1].request.mesh,'medium');assert.equal(calls[2].request.maxDeltaTS,.001);assert.equal(calls[2].request.maxCo,.2);assert.ok(calls.every(c=>c.request.domainScale===1));assert.ok(calls.every(c=>c.request.maxCells<=5000000));
   assert.equal(JSON.stringify(snapshots).includes('trianglesMm'),false);
 });
 test('a condition blocked by preflight does not prevent other conditions from running',async()=>{
   const calls=[],run=successfulCase(calls),runner=new StudyRunner({runCase:async(req,ctx)=>{if(ctx.conditionId==='condition-0')throw Object.assign(new Error('Overloaded hull'),{preflight:true});return run(req,ctx);},cancelCase:async()=>{}});
-  await runner.create(plan(),{id:'blocked-study'});await runner.running;const r=runner.get('blocked-study');assert.equal(r.conditions[0].status,'blocked');assert.equal(r.conditions[1].status,'completed');assert.equal(calls.length,5);assert.equal(r.progress.conditionsFinished,2);
+  await runner.create(plan(),{id:'blocked-study'});await runner.running;const r=runner.get('blocked-study');assert.equal(r.conditions[0].status,'blocked');assert.equal(r.conditions[1].status,'completed');assert.equal(calls.length,3);assert.equal(r.progress.conditionsFinished,2);
 });
 test('cancelling a study cancels its owned active job and schedules no follow-ups',async()=>{
   let started,finish;const didStart=new Promise(r=>{started=r;}),jobDone=new Promise(r=>{finish=r;}),cancelled=[],calls=[];
@@ -101,7 +101,7 @@ test('time-weighted motion RMS integrates linear samples exactly and is insensit
 
 test('quick studies run one coarse solve per selected condition with quick fidelity',async()=>{
   const {numericalRequest,phasesFor}=await import('./study-runner.mjs');
-  assert.deepEqual(phasesFor('quick'),['coarse']);assert.equal(phasesFor('anything').length,5);
+  assert.deepEqual(phasesFor('quick'),['coarse']);assert.equal(phasesFor('anything').length,3);
   const calls=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{}});
   const study=await runner.create(plan(2),{id:'quick-study',speed:'quick',cores:3});await runner.running;
   const done=runner.get(study.id);
@@ -110,16 +110,16 @@ test('quick studies run one coarse solve per selected condition with quick fidel
   for(const c of done.conditions){assert.equal(c.status,'completed');assert.equal(c.result.quick,true);assert.equal(c.result.numericalSensitivityPassed,null);assert.equal(c.result.rankable,false);assert.equal(c.result.metrics.referenceMesh,'coarse');}
   const tris=[0,0,0,200,0,0,0,10,0];
   const q=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null,'quick');
-  assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.8);assert.ok(Math.abs(q.durationS-Math.max(24,40*.2/.3))<1e-9);
+  assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.4);assert.ok(Math.abs(q.durationS-Math.max(24,40*.2/.3))<1e-9);
   const full=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null);
   // Full's coarse grid and numerics are Quick's, over a longer window (40 hull lengths, the same as Quick).
-  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.004);assert.equal(full.maxCo,.8);assert.ok(Math.abs(full.durationS-Math.max(24,40*.2/.3))<1e-9);
-  const wave=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'fine',null);assert.equal(wave.mesh,'fine');assert.ok(Math.abs(wave.durationS-25*.45)<1e-9);assert.equal(wave.maxCo,1);
+  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.002);assert.equal(full.maxCo,.4);assert.ok(Math.abs(full.durationS-Math.max(24,40*.2/.3))<1e-9);
+  const wave=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'medium',null);assert.equal(wave.mesh,'medium');assert.ok(Math.abs(wave.durationS-25*.45)<1e-9);assert.equal(wave.maxCo,1);
 });
 test('full remains the default speed and keeps all five phases',async()=>{
   const calls=[],runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{}});
   await runner.create(plan(1),{id:'full-study'});await runner.running;
-  assert.equal(calls.length,5);assert.equal(runner.get('full-study').options.speed,'full');
+  assert.equal(calls.length,3);assert.equal(runner.get('full-study').options.speed,'full');
 });
 
 test('after a restart, a Quick cluster study re-attaches to its running jobs and finishes',async()=>{
@@ -140,19 +140,19 @@ test('after a restart, a Quick cluster study re-attaches to its running jobs and
   assert.equal(s.conditions[1].status,'completed');assert.equal(s.conditions[1].result.quick,true);
   assert.equal(s.status,'interrupted','an unsent test leaves the study re-runnable');assert.ok(!runner.activeIds.has('s1'));
 });
-test('after a restart, a Full cluster study waits for its running coarse job, then submits the remaining checks',async()=>{
+test('after a restart, a Full cluster study re-attaches its running job and submits the checks not yet sent',async()=>{
   const calls=[];let release;
   const runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{},
     resumeJob:id=>id==='j'?new Promise(r=>{release=r;}):null,
     loadPlan:async()=>new Map(plan(1).conditions.map(c=>[c.id,c]))});
-  await runner.restore({schema:1,id:'s2',name:'Hull',status:'running',options:{speed:'full',backend:'cluster',cores:64},progress:{conditionsTotal:1,solvesMaximum:5},
+  await runner.restore({schema:1,id:'s2',name:'Hull',status:'running',options:{speed:'full',backend:'cluster',cores:64},progress:{conditionsTotal:1,solvesMaximum:3},
     conditions:[{id:'condition-0',label:'c0',mode:'calm',speed:'full',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
-  assert.equal(runner.get('s2').status,'running');assert.equal(calls.length,0,'nothing is submitted before the coarse result');
+  assert.equal(runner.get('s2').status,'running');
   release({id:'j',status:'completed',result:solverResult('coarse'),error:null});
   await runner.running;
   const s=runner.get('s2');
-  assert.deepEqual(calls.map(c=>c.context.phase).sort(),['domain','fine','medium','time-step']);
-  assert.equal(s.status,'completed');assert.equal(s.conditions[0].runs.length,5);assert.equal(s.conditions[0].runs.filter(r=>r.phase==='coarse').length,1);
+  assert.deepEqual(calls.map(c=>c.context.phase).sort(),['medium','time-step']);
+  assert.equal(s.status,'completed');assert.equal(s.conditions[0].runs.length,3);assert.equal(s.conditions[0].runs.filter(r=>r.phase==='coarse').length,1);
 });
 test('a restored local study, or a cluster study with no watched job, is marked interrupted, never resumed',async()=>{
   const runner=new StudyRunner({runCase:async()=>{},cancelCase:async()=>{},resumeJob:()=>null});
