@@ -79,7 +79,7 @@ describe('Test picker',()=>{
   it('defaults to one quick calm test, not all nine',()=>{
     expect(DEFAULT_AUTO_CHOICE).toEqual({speed:'quick',cores:null,conditions:['250g-calm']});
     expect(plannedSolves(DEFAULT_AUTO_CHOICE)).toBe(1);
-    expect(plannedSolves({speed:'full',cores:null,conditions:AUTO_CONDITION_IDS})).toBe(27);
+    expect(plannedSolves({speed:'full',cores:null,conditions:AUTO_CONDITION_IDS})).toBe(21);
     expect(AUTO_CONDITION_IDS).toHaveLength(9);expect(AUTO_CONDITION_IDS.some(id=>id.endsWith('-low'))).toBe(false);
   });
   it('drops unknown or duplicate tests and keeps protocol order',()=>{

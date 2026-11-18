@@ -79,7 +79,7 @@ function publicStudy(record){
       const job=run.jobId&&jobs.get(run.jobId);
       if(job)run.live={status:job.status,stage:job.stage,percent:Number.isFinite(job.progress?.percent)?job.progress.percent:0,etaS:Number.isFinite(job.progress?.etaS)?job.progress.etaS:null,slurmState:job.slurmState??null};
     }
-    const planned=pred?.get(condition.id)?.runs?.filter(r=>!r.error)??phasesFor(record.options?.speed).map(phase=>({phase}));
+    const planned=pred?.get(condition.id)?.runs?.filter(r=>!r.error)??phasesFor(record.options?.speed,condition.mode).map(phase=>({phase}));
     for(const r of planned){
       const weight=r.manifest?Math.max(1,predictS(r.manifest,record.options?.cores??defaultCores,record.options?.backend).totalS):1,run=condition.runs?.find(x=>x.phase===r.phase);
       const fraction=DONE_CONDITION.has(condition.status)||(run&&DONE_CONDITION.has(run.status))?1:run?.live?(run.live.status==='completed'?1:run.live.percent/100):0;
@@ -123,7 +123,7 @@ async function prepareEstimates(geomKey,condition,speed){
   if(estimateCache.has(key))return estimateCache.get(key);
   const pending=(async()=>{
     const runs=[];let fine=null;
-    for(const phase of phasesFor(speed)){
+    for(const phase of phasesFor(speed,condition.mode??condition.request?.mode)){
       await new Promise(r=>setImmediate(r)); // keep the service responsive between ~0.3 s preparations
       try{const p=await core.prepareCfdJob(numericalRequest(condition.request,phase,fine?{manifest:fine}:null,speed),'estimate');runs.push({phase,manifest:slimManifest(p.package.manifest)});if(phase==='fine')fine=p.package.manifest;}
       catch(e){const error=String(e?.message??e);runs.push({phase,error,hint:explainFailure(error)});break;}

@@ -39,12 +39,12 @@ test('an inactive halved timestep cap does not pass actual timestep sensitivity'
   const c=condition();c.runs[2].result.solverRun.actualDeltaTS.maximum=.0005;const r=assessCondition(c);assert.equal(r.checks.find(c=>c.name==='Actual time-step reduction').passed,false);assert.equal(r.numericalSensitivityPassed,false);
 });
 test('wave comparisons use RMS roll rather than a near-zero mean longitudinal force',()=>{
-  const r=assessCondition(condition('beam-waves'));assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.metrics.meanDragN,0);assert.equal(r.metrics.rollRmsDeg,.984);
+  const r=assessCondition(condition('beam-waves'));assert.equal(r.numericalSensitivityPassed,true);assert.equal(r.metrics.meanDragN,0);assert.equal(r.metrics.rollRmsDeg,1,'Full wave tests report the coarse mesh (no medium wave mesh)');assert.equal(r.checks.some(c=>c.name==='Mesh sensitivity'),false);
   const big=condition();big.runs[1].result.forces.meanDragN=.9;assert.equal(assessCondition(big).checks.find(c=>c.name==='Mesh sensitivity').passed,false,'a 10% mesh change fails');
 });
 test('unsettled wave response, failed detailed meshes and missing genuine channels remain inconclusive',()=>{
   for(const mutate of [r=>{r.motion.rollRmsDriftWithinTolerance=false;},r=>{r.quality.detailedMeshOkay=false;},r=>{r.source='empirical-preview';}]){
-    const c=condition('beam-waves');mutate(c.runs[1].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+    const c=condition('beam-waves');mutate(c.runs[2].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
   }
 });
 test('a changed observation window makes the time-step comparison inconclusive',()=>{

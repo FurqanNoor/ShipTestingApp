@@ -11,9 +11,17 @@ const PHASES=['coarse','medium','time-step'];
 /** Allowed relative change for a pass. Calm drag wanders about +-10% over 3 s blocks of a 17.5 s averaging window, so
  * changes much below 5% cannot be resolved; a smaller bar would fail every hull on noise. */
 export const SENSITIVITY_TOLERANCE=.05;
-/** quick: one fast screening solve per condition. full: mesh and time-step sensitivity (3 solves). */
+/**
+ * Wave tests in Full mode skip the medium mesh: on Roihu it took 8-10 h per wave test (2.8x the cells at half the
+ * time step, and interFoam stops scaling beyond ~100 cores), against ~1.5 h for coarse. Calm tests keep it (~1 h).
+ */
+const WAVE_PHASES=['coarse','time-step'];
+/** quick: one fast screening solve per condition. full: calm = mesh + time-step checks (3 solves), waves = time-step check (2). */
 export const SPEEDS={quick:['coarse'],full:PHASES};
-export function phasesFor(speed){return SPEEDS[speed]??SPEEDS.full;}
+export function phasesFor(speed,mode='calm'){
+  if(!SPEEDS[speed]||speed==='full')return mode==='calm'?PHASES:WAVE_PHASES;
+  return SPEEDS[speed];
+}
 const TERMINAL=new Set(['completed','failed','cancelled','blocked','interrupted','skipped']);
 const finite=v=>typeof v==='number'&&Number.isFinite(v);
 const copy=v=>JSON.parse(JSON.stringify(v));
@@ -53,22 +61,24 @@ export function assessCondition(condition){
   const byPhase=new Map(condition.runs.map(run=>[run.phase,run]));
   const coarse=getResult(byPhase.get('coarse')),medium=getResult(byPhase.get('medium')),half=getResult(byPhase.get('time-step'));
   const checks=[],tol=SENSITIVITY_TOLERANCE,pct=Math.round(tol*100);
-  const phases=phasesFor(condition.speed);
+  const phases=phasesFor(condition.speed,condition.mode),meshStudy=phases.includes('medium');
   checks.push(check('Completed numerical quality',phases.every(p=>safeQuality(getResult(byPhase.get(p)),condition.mode)),
-    condition.mode==='beam-waves'?'All three runs need complete, bounded solver histories, both mesh reviews and stationary post-startup RMS roll.':'All three runs need complete, bounded solver histories, both mesh reviews and stationary post-startup forces.'));
+    condition.mode==='beam-waves'?`All ${phases.length} runs need complete, bounded solver histories, both mesh reviews and stationary post-startup RMS roll.`:`All ${phases.length} runs need complete, bounded solver histories, both mesh reviews and stationary post-startup forces.`));
+  if(meshStudy){
   const meshComparable=comparable(coarse,medium);
   const distinct=meshComparable&&cells(coarse)<cells(medium);
   checks.push(check('Two distinct meshes',!!distinct,'Actual cell counts must increase from the coarse to the medium mesh on otherwise matching physical cases.'));
   const meshChange=distinct?difference(coarse,medium,condition.mode):null;
   checks.push(check('Mesh sensitivity',distinct&&meshChange!==null?meshChange<=tol:null,
     condition.mode==='beam-waves'?`Coarse-to-medium RMS roll change must be at most ${pct}%; tiny responses are inconclusive.`:`Coarse-to-medium drag change must be at most ${pct}%; near-zero drag is inconclusive.`,{relativeChange:meshChange,threshold:tol}));
+  }
   const actualFineDt=coarse?.solverRun?.actualDeltaTS?.maximum,actualHalfDt=half?.solverRun?.actualDeltaTS?.maximum;
   const dtComparable=comparable(coarse,half)&&cells(coarse)===cells(half);
   const dtReduced=dtComparable&&finite(actualFineDt)&&actualFineDt>0&&finite(actualHalfDt)&&actualHalfDt>0&&actualHalfDt<=actualFineDt*.6;
   checks.push(check('Actual time-step reduction',!!dtReduced,'The largest recorded solver time step must decrease by at least 40%; changing an inactive cap alone is inconclusive.'));
   const dtChange=dtComparable?difference(coarse,half,condition.mode):null;
   checks.push(check('Time-step sensitivity',dtReduced&&dtChange!==null?dtChange<=tol:null,`Coarse-grid reference and half-step response must differ by at most ${pct}%.`,{relativeChange:dtChange,threshold:tol}));
-  const reference=medium??coarse,referenceRun=reference?[...byPhase.values()].find(r=>r.result===reference):null;
+  const reference=(meshStudy?medium:null)??coarse,referenceRun=reference?[...byPhase.values()].find(r=>r.result===reference):null;
   const metrics=reference?{
     referenceJobId:referenceRun?.jobId??null,referenceMesh:referenceRun?.phase??null,
     meanDragN:finite(reference.forces?.meanDragN)?reference.forces.meanDragN:null,
@@ -90,11 +100,10 @@ export function assessCondition(condition){
 }
 
 function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVersion}){
-  const phases=phasesFor(speed);
   const {conditions,...summary}=plan;
   return {schema:1,id,name:name??plan.name??'Automatic hull study',status:'queued',stage:'Preparing automatic tests',createdAt:now,updatedAt:now,
     plan:copy(summary),options:{speed,cores,...(backend?{backend}:{}),...(protocolVersion?{protocolVersion}:{})},conditions:conditions.map(({request,...c})=>({...copy(c),speed,status:'pending',stage:'Waiting',runs:[]})),
-    progress:{conditionsTotal:conditions.length,conditionsFinished:0,solvesFinished:0,solvesMaximum:conditions.length*phases.length},activeJobId:null,error:null,
+    progress:{conditionsTotal:conditions.length,conditionsFinished:0,solvesFinished:0,solvesMaximum:conditions.reduce((n,c)=>n+phasesFor(speed,c.mode).length,0)},activeJobId:null,error:null,
     physicalValidation:'not-performed',rankable:false};
 }
 /**
@@ -246,7 +255,11 @@ export class StudyRunner {
    * cannot be prepared and are marked interrupted.
    */
   async runClusterCondition(study,condition,planned,speed){
-    const phases=phasesFor(speed);
+    const phases=phasesFor(speed,condition.mode);
+    // Runs of a check this mode no longer makes (e.g. a wave medium mesh started before the change) are stopped.
+    for(const r of condition.runs)if(!phases.includes(r.phase)&&!TERMINAL.has(r.status)){
+      r.status='skipped';r.error='Stopped: Full mode no longer runs this check for this test type.';if(r.jobId)await this.cancelCase(r.jobId);
+    }
     const ensure=async phase=>{
       const existing=condition.runs.find(r=>r.phase===phase);
       if(existing&&TERMINAL.has(existing.status))return existing.status!=='blocked';
@@ -283,7 +296,7 @@ export class StudyRunner {
           if(study.status==='cancelled')break;
           const condition=study.conditions[index],planned=plan.conditions[index];
           condition.status='running';condition.stage='Preparing coarse mesh';study.stage=`${condition.label} · coarse`;await this.save(study);
-          for(const phase of phasesFor(speed)){
+          for(const phase of phasesFor(speed,condition.mode)){
             if(study.status==='cancelled')break;
             if(['time-step','domain'].includes(phase)&&!getResult(condition.runs.find(r=>r.phase==='coarse'))){condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});continue;}
             if(!(await this.runPhase(study,condition,planned,phase,speed)))break;
