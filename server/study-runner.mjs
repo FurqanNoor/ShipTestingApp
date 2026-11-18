@@ -261,14 +261,7 @@ export class StudyRunner {
       });
       const job=await this.runCase(request,context());
       this.applyJob(study,condition,run,job);
-      if(run.status==='failed'&&planned.request.mode!=='calm'&&!run.coupling&&run.hint?.title===COUPLING_FAILURE&&study.status!=='cancelled'){
-        run.firstAttempt={jobId:run.jobId,error:run.error};run.coupling='stabilised';
-        if(study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);
-        if(condition.hint===run.hint)condition.hint=null;
-        run.status='running';run.error=null;run.hint=null;condition.stage=`${phase}: retrying with stronger hull-motion coupling`;await this.save(study);
-        const retry=await this.runCase({...request,coupling:STABILISED_COUPLING},context());
-        this.applyJob(study,condition,run,retry);
-      }
+      await this.retryUnstable(study,condition,planned,run,phase,speed);
     }catch(error){
       if(study.status==='cancelled'){run.status='cancelled';return false;}
       run.status=error.preflight===true?'blocked':'failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);if(run.hint&&!condition.hint)condition.hint=run.hint;
@@ -279,6 +272,22 @@ export class StudyRunner {
       await this.save(study);
     }
     return true;
+  }
+  /** One automatic retry with stronger coupling for a wave run whose hull motion blew up (new and re-attached runs). */
+  async retryUnstable(study,condition,planned,run,phase,speed){
+    if(!(run.status==='failed'&&planned&&planned.request.mode!=='calm'&&!run.coupling&&run.hint?.title===COUPLING_FAILURE&&study.status!=='cancelled'))return;
+    const reference=getResult(condition.runs.find(r=>r.phase==='coarse'&&r!==run));
+    const request={...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration?{waveGeneration:study.options.experiment.waveGeneration}:{}),coupling:STABILISED_COUPLING};
+    run.firstAttempt={jobId:run.jobId,error:run.error};run.coupling='stabilised';
+    if(study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);
+    if(condition.hint===run.hint)condition.hint=null;
+    run.status='running';run.error=null;run.hint=null;condition.stage=`${phase}: retrying with stronger hull-motion coupling`;await this.save(study);
+    try{
+      const retry=await this.runCase(request,{studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
+        onQueued:async id=>{run.jobId=id;run.status='running';(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: retry queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);}});
+      this.applyJob(study,condition,run,retry);
+    }catch(error){run.status='failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);}
+    finally{if(run.jobId&&study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);await this.save(study);}
   }
   /** Record a finished job on its run (shared by normal runs and runs re-attached after a restart). */
   applyJob(study,condition,run,job){
@@ -314,7 +323,8 @@ export class StudyRunner {
         if(!done){existing.status='interrupted';existing.error='The app restarted and this run could not be re-attached.';return true;}
         if(!(study.activeJobIds??=[]).includes(existing.jobId))study.activeJobIds.push(existing.jobId);
         const job=await done;this.applyJob(study,condition,existing,job);
-        study.activeJobIds=study.activeJobIds.filter(id=>id!==existing.jobId);await this.save(study);return true;
+        study.activeJobIds=study.activeJobIds.filter(id=>id!==existing.jobId);await this.save(study);
+        await this.retryUnstable(study,condition,planned,existing,phase,speed);return true;
       }
       if(existing)condition.runs.splice(condition.runs.indexOf(existing),1); // prepared but never submitted
       if(study.status==='cancelled')return false;

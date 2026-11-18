@@ -181,3 +181,19 @@ test('a wave run whose hull motion blows up is retried once with stronger coupli
   assert.equal(c.runs.length,1);assert.equal(c.runs[0].status,'completed');assert.equal(c.runs[0].coupling,'stabilised');assert.equal(c.runs[0].firstAttempt.jobId,'job-1');
   assert.equal(c.hint??null,null);assert.deepEqual(runner.get('retry').activeJobIds??[],[]);
 });
+
+test('a re-attached wave run whose hull motion blew up is also retried with stronger coupling',async()=>{
+  const {STABILISED_COUPLING,COUPLING_FAILURE}=await import('./study-runner.mjs');
+  const calls=[];let release;
+  const p=plan(1);p.conditions[0].mode='beam-waves';p.conditions[0].request.mode='beam-waves';p.conditions[0].request.wavePeriodS=.45;
+  const runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{},
+    resumeJob:id=>id==='j'?new Promise(r=>{release=r;}):null,
+    loadPlan:async()=>new Map(p.conditions.map(c=>[c.id,c]))});
+  await runner.restore({schema:1,id:'s4',name:'Hull',status:'running',options:{speed:'quick',backend:'cluster',cores:64},progress:{conditionsTotal:1,solvesMaximum:1},
+    conditions:[{id:'condition-0',label:'c0',mode:'beam-waves',speed:'quick',phases:['coarse'],status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
+  release({id:'j',status:'failed',error:'Angular velocity: (9e+28 0 0)',hint:{title:COUPLING_FAILURE,hint:'x'},result:null});
+  await runner.running;
+  const c=runner.get('s4').conditions[0];
+  assert.equal(calls.length,1);assert.deepEqual(calls[0].request.coupling,STABILISED_COUPLING);
+  assert.equal(c.runs.length,1);assert.equal(c.runs[0].status,'completed');assert.equal(c.runs[0].coupling,'stabilised');assert.equal(c.runs[0].firstAttempt.jobId,'j');
+});
