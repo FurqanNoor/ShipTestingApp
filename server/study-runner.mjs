@@ -262,6 +262,8 @@ export class StudyRunner {
     try{
       const request={...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration&&planned.request.mode!=='calm'?{waveGeneration:study.options.experiment.waveGeneration}:{})};
       const context=()=>({
+        // Full studies reuse a finished identical Quick solve (same generated case files) instead of re-running it.
+        reuse:speed==='full',
         studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
         onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
       });
@@ -307,7 +309,7 @@ export class StudyRunner {
   }
   /** Record a finished job on its run (shared by normal runs and runs re-attached after a restart). */
   applyJob(study,condition,run,job){
-    run.jobId=job.id;run.status=job.status;run.result=job.result??null;run.error=job.error??null;run.hint=job.hint??(job.status==='failed'?explainFailure(job.error):null);if(run.hint&&!condition.hint)condition.hint=run.hint;
+    run.jobId=job.id;run.status=job.status;run.result=job.result??null;if(job.reused)run.reused=true;run.error=job.error??null;run.hint=job.hint??(job.status==='failed'?explainFailure(job.error):null);if(run.hint&&!condition.hint)condition.hint=run.hint;
     if(job.status==='cancelled'&&study.status!=='cancelled'){study.status='cancelled';study.stage='Stopped after job cancellation';for(const c of study.conditions)if(['pending','running'].includes(c.status))c.status='cancelled';}
   }
   finishCondition(study,condition){

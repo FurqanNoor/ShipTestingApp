@@ -8,7 +8,7 @@ import {existsSync} from 'node:fs';
 import {resolve,dirname,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import os from 'node:os';
-import {zipSync,unzipSync,strToU8} from 'fflate';
+import {zipSync,unzipSync,strToU8,strFromU8} from 'fflate';
 import * as core from './generated/core.mjs';
 import {readCfdRunResult} from './result-reader.mjs';
 import {StudyRunner,numericalRequest,phasesFor,conditionPhases} from './study-runner.mjs';
@@ -315,10 +315,40 @@ async function writePackage(dir,files){
   // setFields can replace 0/alpha.water with a mesh-sized field. Preserve fresh inputs for export.
   await writeFile(resolve(dir,'case-input.zip'),zipSync(Object.fromEntries(Object.entries(files).map(([k,v])=>[k,typeof v==='string'?strToU8(v):v])),{level:4}));
 }
+/**
+ * Fingerprint of a generated case: every input file, with the job id masked. Two jobs with the same fingerprint are the
+ * same simulation (geometry, mesh, numerics and generator version), so a Full study can reuse a finished Quick result
+ * instead of queueing an identical 192-core run again.
+ */
+function caseDigest(files,id){
+  const h=createHash('sha256');
+  for(const name of Object.keys(files).sort()){
+    const v=files[name];h.update(name+'\0');
+    h.update(typeof v==='string'?v.split(id).join('<case>'):Buffer.from(v instanceof Uint8Array?v:strToU8(String(v))));h.update('\0');
+  }
+  return h.digest('hex');
+}
+async function reusableJob(prepared,id){
+  const m=prepared.package.manifest,want=caseDigest(prepared.package.files,id);
+  for(const j of jobs.values()){
+    if(j.status!=='completed'||j.result?.source!=='OpenFOAM'||j.manifest?.sourceHash!==m.sourceHash||j.manifest?.protocolKey!==m.protocolKey||j.manifest?.mesh?.level!==m.mesh?.level)continue;
+    try{
+      const old=unzipSync(new Uint8Array(await readFile(resolve(j.dir,'case-input.zip'))));
+      // String files were zipped as UTF-8; compare them as text so the id mask applies.
+      const files=Object.fromEntries(Object.entries(old).map(([k,v])=>[k,typeof prepared.package.files[k]==='string'?strFromU8(v):v]));
+      if(Object.keys(files).length===Object.keys(prepared.package.files).length&&caseDigest(files,j.id)===want)return j;
+    }catch{/* no inputs on disk: not reusable */}
+  }
+  return null;
+}
 async function enqueueCase(body,context={}){
   const id=randomUUID();let prepared;
   try{prepared=await core.prepareCfdJob(body,id);}catch(error){error.preflight=true;throw error;}
   if(context.isCancelled?.())return {id:null,status:'cancelled',result:null,error:null};
+  if(context.reuse&&context.studyId){
+    const hit=await reusableJob(prepared,id).catch(()=>null);
+    if(hit)return {id:hit.id,status:'completed',result:hit.result,error:null,hint:null,reused:true};
+  }
   const dir=resolve(RUNS,id);await writePackage(dir,prepared.package.files);
   const {trianglesMm,...summary}=prepared.request;void trianglesMm;
   const j={id,dir,name:summary.name,container:`hull-cfd-${id}`,status:'queued',stage:'Queued',createdAt:new Date().toISOString(),log:[],request:summary,manifest:prepared.package.manifest,hydro:prepared.hydro,geometryHash:prepared.geometryHash,protocolHash:prepared.protocolHash,
