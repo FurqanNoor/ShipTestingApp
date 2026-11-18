@@ -454,6 +454,8 @@ async function pollCluster(){
               }
             }
             await finishRun(j);
+            // Results (logs + postProcessing) are local now; free the cluster's file quota.
+            void cluster.removeRemote(clusterConfig,j.remoteDir);
           }catch(error){if(j.status!=='cancelled')await failRun(j,error);}
           finally{settleJob(j);}
         })();
@@ -467,7 +469,9 @@ async function cancel(j){
   j.status='cancelled';j.stage=j.error?'Stopped at time limit':'Cancelled by user';
   const child=j.child;
   if(child){await execute('docker',[...dockerPrefix,'rm','-f',j.container],{env:dockerEnv,timeout:15_000}).catch(()=>{});child.kill('SIGTERM');}
-  if(j.backend==='cluster'){clusterJobs.delete(j.id);if(j.slurmId)await cluster.cancelRemote(clusterConfig,j.slurmId);}
+  if(j.backend==='cluster'){clusterJobs.delete(j.id);if(j.slurmId)await cluster.cancelRemote(clusterConfig,j.slurmId);
+    // A cancelled job is killed before its own cleanup: remove its folder once Slurm has stopped it.
+    const dir=j.remoteDir;setTimeout(()=>void cluster.removeRemote(clusterConfig,dir),60_000).unref?.();}
   await save(j);settleJob(j);void startNext();
 }
 async function requestBody(req){

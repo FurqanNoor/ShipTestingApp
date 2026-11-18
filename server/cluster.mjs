@@ -147,6 +147,18 @@ function downloadOnce(c,remoteDir,localDir){
   });
 }
 
+/**
+ * Delete one finished run's folder on the cluster. Only <remoteDir>/runs/<job uuid> is accepted. Scratch has a file-count
+ * quota (500,000 for the project): on 18 Nov 2026 old run folders filled it and every new run failed writing its files.
+ */
+export function isRunDir(c,remoteDir){
+  return typeof remoteDir==='string'&&!!c.remoteDir&&remoteDir.startsWith(c.remoteDir+'/runs/')&&/^[a-f0-9-]{36}$/.test(remoteDir.slice(c.remoteDir.length+6));
+}
+export function removeRemote(c,remoteDir){
+  if(!isRunDir(c,remoteDir))return Promise.resolve(false);
+  return ssh(c,`rm -rf '${remoteDir}'`,{timeoutMs:300_000}).then(()=>true,()=>false);
+}
+
 /** Slurm batch script: one node, all requested cores, the pinned image through Apptainer with a clean environment. */
 export function batchScript(c,{name,cores=c.cores}){
   const hh=String(c.hours).padStart(2,'0');

@@ -67,3 +67,11 @@ test('on a cluster, a failed coarse run leaves the condition with the medium res
   assert.deepEqual(c.runs.map(r=>r.phase).sort(),['coarse','medium','time-step']);
   assert.equal(c.result.numericalSensitivityPassed,false);
 });
+
+test('only a run folder under <remoteDir>/runs/<uuid> may be removed from the cluster',async()=>{
+  const {isRunDir}=await import('./cluster.mjs');
+  const c={remoteDir:'/scratch/p/fnoor/hulltests'};
+  assert.equal(isRunDir(c,'/scratch/p/fnoor/hulltests/runs/3512ce5b-c759-4e3c-9500-36369059c229'),true);
+  for(const bad of ['/scratch/p/fnoor/hulltests','/scratch/p/fnoor/hulltests/runs','/scratch/p/fnoor/hulltests/runs/..','/scratch/p/fnoor/hulltests/runs/x/../../..','/scratch/p/fnoor/hulltests/openfoam-v2312.sif','/scratch/p/fnoor/hulltests/runs/3512ce5b-c759-4e3c-9500-36369059c229/..',"/scratch/p/fnoor/hulltests/runs/3512ce5b-c759-4e3c-9500-36369059c22' ; rm -rf ~"])assert.equal(isRunDir(c,bad),false,bad);
+  assert.equal(isRunDir({remoteDir:''},'/runs/3512ce5b-c759-4e3c-9500-36369059c229'),false);
+});
