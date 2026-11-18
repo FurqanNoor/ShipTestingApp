@@ -1,11 +1,16 @@
-// Test conditions. Everything is Froude-scaled from the repo's 120 m demo ferry to the
-// 220 mm size limit, so every model is tested at the same weights, speed and waves.
+// Test conditions. Everything is Froude-scaled from the repo's 120 m demo ferry to a 220 mm
+// reference model, so every model is tested at the same weights, speed and waves.
 
 export const G = 9.81; // m/s2
 export const RHO = 998; // fresh water at 20 C, kg/m3
 export const NU = 1.004e-6; // kinematic viscosity of fresh water at 20 C, m2/s
 
-export const SIZE_LIMIT_MM = 220;
+/** Competition build volume: entries may be up to 250 x 250 x 250 mm (length, beam and height). */
+export const SIZE_LIMIT_MM = 250;
+/** Reference model length for the Froude scaling of the preview conditions (unchanged when the size limit changed). */
+export const REFERENCE_MODEL_MM = 220;
+/** True when an L x B x H size in mm fits the build volume (0.5 mm tolerance for CAD rounding). */
+export const withinSizeLimit = (sizeMm: readonly number[]) => sizeMm.every((v) => v <= SIZE_LIMIT_MM + 0.5);
 
 /** Full-size reference: the demo ferry from the original Ship Test Bench (npm run report). */
 export const REFERENCE = {
@@ -19,7 +24,7 @@ export const REFERENCE = {
   cargoT: 500.0, // cargo, stores, provisions
 };
 
-export const SCALE = REFERENCE.lengthM / (SIZE_LIMIT_MM / 1000); // 545.45
+export const SCALE = REFERENCE.lengthM / (REFERENCE_MODEL_MM / 1000); // 545.45
 
 /** Model mass in grams for a full-size mass in tonnes (Froude scaling, sea water to fresh water). */
 export function scaleMassG(tonnes: number): number {

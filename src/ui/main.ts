@@ -1,6 +1,6 @@
 // Hull Test Bench: app state, STL upload, results panel, Excel download.
 import { ModelResult, WeightResult, analyzeModel, rankModels } from "../engine/analyze";
-import { Conditions, REFERENCE, SCALE, SIZE_LIMIT_MM, defaultConditions, tankChecks, waveLength } from "../engine/conditions";
+import { Conditions, REFERENCE, REFERENCE_MODEL_MM, SCALE, SIZE_LIMIT_MM, defaultConditions, tankChecks, waveLength, withinSizeLimit } from "../engine/conditions";
 import { exampleHull } from "../engine/example";
 import { FLIP, IDENTITY, Mat3, ROLL90, TURN90, autoOrient, guessUnitScale, mul, place } from "../engine/orient";
 import { parseSTL } from "../engine/stl";
@@ -175,11 +175,11 @@ function gzChart(w: WeightResult): string {
 
 function panelHtml(m: Model): string {
   const [L, B, H] = m.size;
-  const over = L > SIZE_LIMIT_MM + 0.5 || B > SIZE_LIMIT_MM + 0.5;
+  const over = !withinSizeLimit([L, B, H]);
   let html = `<div class="sec">
     <div class="model-name">${esc(m.name)}</div>
     <div class="model-meta"><span>${f(L)} &times; ${f(B)} &times; ${f(H)} mm</span>
-      <span class="pill ${over ? "bad" : "ok"}">${over ? `Over the ${SIZE_LIMIT_MM} mm limit` : `Within ${SIZE_LIMIT_MM} &times; ${SIZE_LIMIT_MM} mm`}</span>
+      <span class="pill ${over ? "bad" : "ok"}">${over ? `Over the ${SIZE_LIMIT_MM} mm limit` : `Within ${SIZE_LIMIT_MM} &times; ${SIZE_LIMIT_MM} &times; ${SIZE_LIMIT_MM} mm`}</span>
       ${m.example ? `<span class="pill info">Built-in example, add your STL to replace it</span>` : ""}</div>`;
   if (m.error) return html + `<p class="note bad">${esc(m.error)}</p></div>` + conditionsHtml();
   if (!m.result) return html + `<p class="note"><span class="spin"></span>Testing this hull at 3 weights in calm water and 3 seas&hellip;</p></div>` + conditionsHtml();
@@ -257,7 +257,7 @@ function conditionsHtml(): string {
     </form>`;
   } else {
     body = `<dl class="cond">
-      <dt>Scale</dt><dd>1:${f(SCALE, 0)}<small>${REFERENCE.lengthM} m reference ferry scaled to the ${SIZE_LIMIT_MM} mm size limit</small></dd>
+      <dt>Scale</dt><dd>1:${f(SCALE, 0)}<small>${REFERENCE.lengthM} m reference ferry scaled to a ${REFERENCE_MODEL_MM} mm model · entries up to ${SIZE_LIMIT_MM} &times; ${SIZE_LIMIT_MM} &times; ${SIZE_LIMIT_MM} mm</small></dd>
       <dt>Weights</dt><dd>${c.weights.map((w) => `${f(w.grams, w.grams % 1 ? 1 : 0)} g`).join(" &middot; ")}<small>Empty ship &middot; with luggage, fuel and cargo &middot; double load</small></dd>
       <dt>Seas</dt><dd>${c.waves.map((w) => `${f(w.heightMm)} mm / ${f(w.periodS, 2)} s`).join(" &middot; ")}<small>2 m, 4 m and 6 m seas at full size. Natural irregular waves, identical for every model. Longest ${f(Math.max(...c.waves.map((w) => waveLength(w.periodS))) * 1000, 0)} mm.</small></dd>
       <dt>Speed</dt><dd>${f(c.speed, 2)} m/s<small>${REFERENCE.speedKn} knots at full size. Drag is measured heading into the waves, roll with waves from the side.</small></dd>

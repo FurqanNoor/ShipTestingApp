@@ -130,7 +130,7 @@ function detectGeometry(triangles:Float32Array):CfdHull {
   throw new Error('Automatic hull preparation failed. Check STL units, axes and closure; supported open hulls need a continuous horizontal top rim. '+errors.join(' '));
 }
 
-/** Nine identical physical conditions (3 masses x calm, medium and high waves) for every supplied 220 mm-class design. */
+/** Nine identical physical conditions (3 masses x calm, medium and high waves) for every design up to 250 x 250 x 250 mm. */
 export function createAutomaticPlan(input:AutomaticPlanInput):AutomaticPlan {
   if(!input||!(Array.isArray(input.trianglesMm)||input.trianglesMm instanceof Float32Array)||!input.trianglesMm.length||input.trianglesMm.length%9||input.trianglesMm.length>MAX_CAD_TRIANGLES*9)throw new Error(`Provide 1–${MAX_CAD_TRIANGLES.toLocaleString('en-GB')} complete CAD triangles for automatic testing. Export the STL at a coarser resolution.`);
   if(Array.from(input.trianglesMm).some(v=>!Number.isFinite(v)||Math.abs(v)>1e6))throw new Error('CAD coordinates must be finite millimetres within the supported range.');

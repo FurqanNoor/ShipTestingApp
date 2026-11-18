@@ -1,5 +1,5 @@
 // Runs the full test programme on one hull: 3 weights x (calm water + 3 waves).
-import { Conditions, G, NU, RHO, SIZE_LIMIT_MM } from "./conditions";
+import { Conditions, G, NU, RHO, SIZE_LIMIT_MM, withinSizeLimit } from "./conditions";
 import { CalmDrag, HullForm, holtrop, stawave2 } from "./drag";
 import { buildColumns, gridSize } from "./hull";
 import { GZCurve, floatUpright, gzCurve, maxLoadVolume } from "./hydrostatics";
@@ -154,10 +154,11 @@ export async function analyzeModel(trisMm: Float32Array, cond: Conditions, onPro
   }
   const notes: string[] = [];
   if (fine.sealedOpenSurface) notes.push("The STL is an open surface, so it was closed at the deck edge for the analysis.");
-  if (L * 1000 > SIZE_LIMIT_MM + 0.5 || B * 1000 > SIZE_LIMIT_MM + 0.5) notes.push(`Larger than the ${SIZE_LIMIT_MM} x ${SIZE_LIMIT_MM} mm limit.`);
+  const fits = withinSizeLimit([L * 1000, B * 1000, D * 1000]);
+  if (!fits) notes.push(`Larger than the ${SIZE_LIMIT_MM} x ${SIZE_LIMIT_MM} x ${SIZE_LIMIT_MM} mm limit.`);
   return {
     sizeMm: [L * 1000, B * 1000, D * 1000],
-    withinLimit: L * 1000 <= SIZE_LIMIT_MM + 0.5 && B * 1000 <= SIZE_LIMIT_MM + 0.5,
+    withinLimit: fits,
     volumeCm3: fine.volume * 1e6, maxLoadG, sealedOpenSurface: fine.sealedOpenSurface, weights,
     score: { dragMN: dragN ? (1000 * dragSum) / dragN : NaN, rollDeg: rollN ? rollSum / rollN : NaN, maxLoadG, failures },
     notes,

@@ -100,7 +100,7 @@ export function buildWorkbook(models: ReportModel[], cond: Conditions, when = ne
     kv("Exported", when.toISOString().slice(0, 16).replace("T", " ") + " UTC"),
     [],
     head(["Scale", "Value", "Note"]),
-    kv("Size limit (mm)", SIZE_LIMIT_MM, "Maximum model length and beam"),
+    kv("Size limit (mm)", SIZE_LIMIT_MM, "Maximum model length, beam and height"),
     kv("Reference ship", REFERENCE.name, `${REFERENCE.lengthM} m long, ${REFERENCE.speedKn} kn, from the original Ship Test Bench`),
     kv("Scale", `1:${SCALE.toFixed(1)}`, "Reference length / size limit. Froude scaling: lengths / scale, time and speed / sqrt(scale), mass / scale^3"),
     kv("Water", "Fresh, 20 C", `Density ${RHO} kg/m3, viscosity ${NU} m2/s, gravity ${G} m/s2`),
