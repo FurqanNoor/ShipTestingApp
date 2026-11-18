@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {generateOpenFoamCase,type CfdCaseInput} from '../src/cfd/case';
 import {extendCaseWithWaves,type WaveCaseSettings} from '../src/cfd/waves';
 import {boxHull} from '../src/engine/example';
-import {buildAutomaticStudyRequest,normaliseChoice,plannedSolves,formatDuration,AUTO_CONDITION_IDS,DEFAULT_AUTO_CHOICE} from '../src/ui/automaticPanel';
+import {buildAutomaticStudyRequest,normaliseChoice,plannedSolves,formatDuration,reviewText,AUTO_CONDITION_IDS,DEFAULT_AUTO_CHOICE} from '../src/ui/automaticPanel';
 import type {CfdSelection} from '../src/ui/cfdPanel';
 
 const text=(files:Record<string,string|Uint8Array>,name:string)=>String(files[name]);
@@ -169,5 +169,14 @@ describe('Competition load rule',()=>{
       expect(b.positionM[2]-hull.bounds.minM[2]).toBeCloseTo(.004,6);
     }
     expect(standardBallast(hull,.35).massKg).toBeCloseTo(.175,12);
+  });
+});
+
+describe('review label',()=>{
+  it('names the failed check instead of a bare "Review needed"',()=>{
+    expect(reviewText({quick:true})).toBe('Quick result (rough)');
+    expect(reviewText({numericalSensitivityPassed:true})).toBe('Sensitivity checks passed');
+    expect(reviewText({numericalSensitivityPassed:false,checks:[{name:'Completed numerical quality',passed:true},{name:'Mesh sensitivity',passed:false,relativeChange:.327,threshold:.05}]})).toBe('Mesh sensitivity 33% (limit 5%)');
+    expect(reviewText({numericalSensitivityPassed:false,checks:[{name:'Completed numerical quality',passed:false}]})).toBe('Check failed: Completed numerical quality');
   });
 });

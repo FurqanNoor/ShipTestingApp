@@ -17,7 +17,10 @@ export const SENSITIVITY_TOLERANCE=.05;
  */
 const WAVE_PHASES=['coarse','time-step'];
 /** quick: one fast screening solve per condition. full: calm = mesh + time-step checks (3 solves), waves = time-step check (2). */
-export const SPEEDS={quick:['coarse'],full:PHASES};
+export const SPEEDS={quick:['coarse'],full:PHASES,
+  // Verification only (never ranked: the leaderboard compares studies of the same speed): medium + fine grids, to
+  // measure how far the coarse/medium calm drag is from mesh convergence.
+  'mesh-check':['medium','fine']};
 export function phasesFor(speed,mode='calm'){
   if(!SPEEDS[speed]||speed==='full')return mode==='calm'?PHASES:WAVE_PHASES;
   return SPEEDS[speed];

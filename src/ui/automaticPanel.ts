@@ -99,6 +99,15 @@ export function clockTime(iso:unknown,now=new Date()):string{
   const time=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   return d.toDateString()===now.toDateString()?time:`${d.toLocaleDateString([],{weekday:'short'})} ${time}`;
 }
+/** Review label: names the first failed Full-mode check (e.g. "Mesh sensitivity 33% (limit 5%)") instead of a bare "Review needed". */
+export function reviewText(result:Record<string,unknown>):string{
+  if(result.quick===true)return 'Quick result (rough)';
+  if(result.numericalSensitivityPassed===true)return 'Sensitivity checks passed';
+  const failed=list(result.checks).find(c=>c.passed!==true);
+  if(!failed)return 'Review needed';
+  const change=finite(failed.relativeChange),limit=finite(failed.threshold);
+  return change!==null?`${text(failed.name)} ${Math.round(100*Math.abs(change))}%${limit!==null?` (limit ${Math.round(100*limit)}%)`:''}`:`Check failed: ${text(failed.name)}`;
+}
 /** One comparison sheet across every hull study (competition entries side by side). */
 export function allStudiesSheet(studies:unknown[]):Sheet{
   const rows:Cell[][]=[['Hull','Study started','Speed','Condition','Total mass (g)','Test','Wave H (mm)','Period (s)','Status','Mean towing resistance (N)','Roll RMS (deg)','Maximum roll (deg)','Heave RMS (mm)','Initial buoyancy (N)','Initial GM (mm)','Initial freeboard (mm)','Achieved wave height (% of target)','Rim/deck edge dips under','Mesh cells','Review','Issue','Study ID']];
@@ -106,7 +115,7 @@ export function allStudiesSheet(studies:unknown[]):Sheet{
     const study=record(value),speed=record(study.options).speed==='quick'?'Quick':'Full';
     for(const c of list(study.conditions)){
       const result=record(c.result),m=record(result.metrics),hint=record(c.hint);
-      const review=hint.verdict==='stability-failure'?'Stability failure':hint.verdict==='sinks'?'Sinks under this load':c.status==='completed'?(result.quick===true?'Quick result (rough)':result.numericalSensitivityPassed===true?'Sensitivity checks passed':'Review needed'):text(c.status);
+      const review=hint.verdict==='stability-failure'?'Stability failure':hint.verdict==='sinks'?'Sinks under this load':c.status==='completed'?reviewText(result):text(c.status);
       rows.push([text(study.name),text(study.createdAt),speed,text(c.label??c.id),scaled(c.massKg,1000),c.mode==='calm'?'Calm tow':'Beam waves',scaled(c.waveHeightM,1000),finite(c.wavePeriodS),text(c.status),c.mode==='calm'?finite(m.meanDragN):null,finite(m.rollRmsDeg),finite(m.maxRollDeg),scaled(m.heaveRmsM,1000),finite(m.initialBuoyancyN),scaled(m.initialGmM,1000),scaled(m.freeboardM,1000),scaled(m.waveHeightRatio,100),m.rimImmersionRisk===true?'Yes':m.rimImmersionRisk===false?'No':'',finite(m.actualMeshCells),review,[text(hint.title),text(c.error)].filter(Boolean).join(': '),text(study.id)]);
     }
   }
@@ -199,7 +208,7 @@ export function attachAutomaticPanel(options:AutomaticPanelOptions){
     get('auto-study').innerHTML=`<div class="auto-study-heading"><div><b>${esc(study.name??'Hull study')}</b><span>${esc(speed)} · ${esc(study.status)} · ${esc(study.stage??'')}</span>${eta?`<span class="auto-eta">${esc(eta)}</span>`:''}</div><div class="auto-study-actions">${active?`<button type="button" class="btn small" id="auto-cancel">${study.status==='queued'?'Remove from queue':'Stop tests'}</button>`:''}${!active&&unfinished?`<button type="button" class="btn small" id="auto-rerun">Re-run ${unfinished} unfinished test${unfinished===1?'':'s'}</button>`:''}</div></div><progress aria-label="Computing done" value="${overall??done}" max="${overall!==null?100:Math.max(total,1)}"></progress><p class="cfd-note">${overall!==null?`${Math.round(overall)}% of the computing done · `:''}${finished} / ${conditionCount} tests finished · ${done} / ${total} solver runs. Numbers appear as soon as the first run of a test finishes (marked provisional until every check is done). Failed or unsuitable tests are recorded and skipped.</p>${study.error?`<p class="cfd-error">${esc(study.error)}</p>`:''}<div class="auto-table-wrap"><table class="auto-results"><caption>Actual solver results · no validated placement assigned</caption><thead><tr><th>Test</th><th>Resistance</th><th>Roll RMS</th><th>Wave achieved</th><th>Initial buoyancy</th><th>Review</th></tr></thead><tbody>${conditions.map(c=>{
       const outcome=record(c.result),early=provisional(c),final=Object.keys(record(outcome.metrics)).length>0,metrics=final?record(outcome.metrics):early.metrics,hint=record(c.hint);
       const verdict=String(hint.verdict??'');
-      const review=verdict==='stability-failure'?'Stability failure':verdict==='sinks'?'Sinks under this load':!final&&early.phase?`Provisional · ${early.phase} mesh`:c.status==='completed'?(outcome.quick===true?'Quick result (rough)':outcome.numericalSensitivityPassed===true?'Sensitivity checks passed':'Review needed'):String(c.status??'pending');
+      const review=verdict==='stability-failure'?'Stability failure':verdict==='sinks'?'Sinks under this load':!final&&early.phase?`Provisional · ${early.phase} mesh`:c.status==='completed'?reviewText(outcome):String(c.status??'pending');
       const swamp=metrics.rimImmersionRisk===true?'<small class="auto-row-error">⚠ Rim/deck edge dips under: would take on water</small>':'';
       const problem=hint.title?`<small class="auto-row-error"><b>${esc(hint.title)}.</b> ${esc(hint.hint)}</small><details class="auto-raw"><summary>Technical detail</summary><small>${esc(c.error??'')}</small></details>`:c.error?`<small class="auto-row-error">${esc(c.error)}</small>`:'';
       return `<tr><td><b>${esc(c.label??c.id)}</b>${c.status==='running'||c.status==='pending'?runChips(c):''}${problem}</td><td>${c.mode==='calm'?`${display(metrics.meanDragN,5)} <small>N</small>`:'—'}</td><td>${display(metrics.rollRmsDeg,2)} <small>°</small></td><td>${c.mode==='calm'?'—':finite(metrics.waveHeightRatio)!==null?`<span class="${metrics.waveAchieved===false?'auto-row-error':''}" title="Measured at the wave gauges: height ${display((metrics.waveHeightRatio as number)*100,0)}%, period ${display((finite(metrics.wavePeriodRatio)??NaN)*100,0)}% of the requested wave. The gauges stand close to the hull, so this includes waves the hull reflects and radiates: a hull that rolls or reflects strongly reads high. The incoming wave itself is identical for every hull (calibrated in an empty tank). ⚠ marks readings outside ±10% height / ±5% period.">${display((metrics.waveHeightRatio as number)*100,0)}% H${metrics.waveAchieved===false?' ⚠':''}</span>`:'—'}</td><td>${display(metrics.initialBuoyancyN,3)} <small>N</small></td><td><span class="auto-review ${outcome.numericalSensitivityPassed===true?'passed':''}">${esc(review)}</span>${swamp}</td></tr>`;

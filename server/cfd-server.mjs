@@ -530,7 +530,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(path==='/api/cfd/estimate'&&req.method==='POST'){
       const body=await requestBody(req),{plan,fix}=await planFor(body.name,body.trianglesMm);
-      const speed=body.speed==='quick'?'quick':'full',cores=clampCores(Number(body.cores)),gk=geometryKey(fix.trianglesMm);
+      const speed=['quick','mesh-check'].includes(body.speed)?body.speed:'full',cores=clampCores(Number(body.cores)),gk=geometryKey(fix.trianglesMm);
       const backend=clusterReady()?'cluster':'local',coresUsed=backend==='cluster'?clusterConfig.cores:cores;
       const conditions=[];for(const c of plan.conditions)conditions.push(summariseCondition(c,await prepareEstimates(gk,c,speed),coresUsed,backend));
       return json(res,200,{repairNotes:fix.notes,geometryMode:plan.geometryMode,speed,cores:coresUsed,backend,parallel:backend==='cluster',calibrated:Object.keys((backend==='cluster'?clusterCalibration:calibration).entries??{}).length>0,machineSpeedFactor:calibration.machineSpeedFactor??1,conditions,queue:queueSummary()});
@@ -539,7 +539,7 @@ const server=http.createServer(async(req,res)=>{
       if(!(await solverStatus()).available)return json(res,409,{error:'Start Docker and run npm run cfd:pull before starting automatic tests.'});
       const body=await requestBody(req),{plan,fix}=await planFor(body.name,body.trianglesMm);
       const problem=selectConditions(plan,body.conditionIds);if(problem)return json(res,400,{error:problem});
-      const speed=body.speed==='quick'?'quick':'full',cores=clampCores(Number(body.cores));
+      const speed=['quick','mesh-check'].includes(body.speed)?body.speed:'full',cores=clampCores(Number(body.cores));
       const study=await createStudy(plan,fix.trianglesMm,{speed,cores});return json(res,202,publicStudy(studyRunner.get(study.id)));
     }
     const studyMatch=/^\/api\/cfd\/studies\/([a-f0-9-]{36})(?:\/(cancel|download|rerun))?$/.exec(path);
