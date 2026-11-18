@@ -36,6 +36,11 @@ const HINTS=[
   {test:/time limit was reached|Stopped at time limit/i,
     title:'Hit the time limit',
     hint:'The run took longer than the configured limit (72 hours by default). Raise it with CFD_TIMEOUT_MS (up to 7 days), or use Quick mode.'},
+  // Before the generic blow-up rule: a runaway rigid-body rate (e.g. "Angular velocity: (1.3e+95 0 ...)") is a numerical
+  // body-fluid coupling failure, typical of very light and very stiff hulls; it is not a geometry fault.
+  {test:/(Angular velocity|Velocity): \(\s*-?[\d.]+e\+(?:[1-9]\d)/i,
+    title:'Hull motion became numerically unstable',
+    hint:'The coupled hull motion (heave/roll) blew up numerically. This happens with very light, very stable hulls, where the water moving with the hull outweighs it. It is a solver problem, not a hull result: re-run the test. If it repeats with the current app version, report it with the downloaded case.'},
   {test:/Floating point exception|sigFpe|\bnan\b|Maximum number of iterations exceeded/i,
     title:'Solver became unstable',
     hint:'The flow solution blew up. This usually means a bad mesh near the hull or a time step too large for violent motion. Check the hull geometry; if it repeats, report it with the downloaded case.'},

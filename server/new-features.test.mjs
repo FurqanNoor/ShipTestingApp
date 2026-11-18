@@ -84,3 +84,9 @@ test('mesh gate tolerates a few soft-quality faces but never invalid cells',asyn
   assert.equal(meshGate(real.replace('highly skew faces','zero or negative cell volume')).ok,false);
   assert.equal(meshGate('    cells: 10\nMesh OK.\n').ok,true);
 });
+
+test('a runaway hull motion is explained as a numerical coupling failure, not a geometry fault',async()=>{
+  const {explainFailure}=await import('./failure-hints.mjs');
+  assert.equal(explainFailure('OpenFOAM stopped','    Angular velocity: (5.42715812e+96 0 1.046094366e+94)\nFloating point exception').title,'Hull motion became numerically unstable');
+  assert.equal(explainFailure('OpenFOAM stopped','    Angular velocity: (0.68 0 -0.0002)\nFloating point exception').title,'Solver became unstable');
+});
