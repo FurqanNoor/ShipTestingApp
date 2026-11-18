@@ -180,3 +180,14 @@ describe('review label',()=>{
     expect(reviewText({numericalSensitivityPassed:false,checks:[{name:'Completed numerical quality',passed:false}]})).toBe('Check failed: Completed numerical quality');
   });
 });
+
+describe('hull-motion coupling',()=>{
+  it('defaults to relaxation 0.4 with 2 outer correctors and can be stabilised for a retry',()=>{
+    const base=()=>generateOpenFoamCase(still({durationS:1,fidelity:'quick',maxCo:.8,maxDeltaTS:.004,timeStepS:.001}));
+    const normal=extendCaseWithWaves(base(),beam),strong=extendCaseWithWaves(base(),{...beam,coupling:{relaxation:.2,outerCorrectors:3}});
+    expect(text(normal.files,'constant/dynamicMeshDict')).toContain('accelerationRelaxation 0.4;');
+    expect(text(normal.files,'system/fvSolution')).toContain('nOuterCorrectors 2; nCorrectors 2');
+    expect(text(strong.files,'constant/dynamicMeshDict')).toContain('accelerationRelaxation 0.2;');
+    expect(text(strong.files,'system/fvSolution')).toContain('nOuterCorrectors 3; nCorrectors 2');
+  });
+});

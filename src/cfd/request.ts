@@ -18,6 +18,8 @@ export interface CfdRunRequest {
   name: string;
   /** Experiments only (never ranked): wave-maker zone length/strength and a factor on the calibrated gain. */
   waveGeneration?: { wavelengths?: number; strength?: number; gainScale?: number };
+  /** Retry of a run whose hull motion blew up: stronger body-fluid coupling (numerics only, same physics). */
+  coupling?: { relaxation: number; outerCorrectors: number };
   trianglesMm: number[];
   geometryMode: CfdEnvelopeMode;
   mode: CfdRunMode;
@@ -261,6 +263,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
     waveHeightM, wavePeriodS, inertiaMeasured: mode === 'beam-waves'&&inertiaSource==='measured', inertiaKgM2,inertiaSource,inertiaTensorKgM2,
     mesh, fidelity, durationS, timeStepS,maxDeltaTS, maxCo, maxCells, domainScale,
     waveGeneration: checkedWaveGeneration(raw.waveGeneration, mode),
+    coupling: mode === 'calm' || raw.coupling === undefined ? undefined : { relaxation: boundedNumber((raw.coupling as Record<string, unknown>)?.relaxation, 'Coupling relaxation', .05, 1, true), outerCorrectors: Math.round(boundedNumber((raw.coupling as Record<string, unknown>)?.outerCorrectors, 'Outer correctors', 1, 5, true)) },
   };
   const encoder = new TextEncoder();
   const geometryHash = await sha256([
@@ -292,7 +295,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
   const preset=automatic&&mode==='beam-waves'?AUTOMATIC_WAVE_PRESETS.find(w=>{const scale=hull.bounds.lengthM/.22;return Math.abs(w.height*scale-waveHeightM!)<1e-10&&Math.abs(w.period*Math.sqrt(scale)-wavePeriodS!)<1e-10;}):undefined;
   const wg=request.waveGeneration;
   const generationGain=(preset?waveGenerationGain(preset,fidelity,mesh):1)*(wg?.gainScale??1);
-  if (mode !== 'calm') pkg = extendCaseWithWaves(pkg, { kind: mode, generationGain, generationWavelengths: wg?.wavelengths, generationStrength: wg?.strength, heightM: waveHeightM!, periodS: wavePeriodS!, massKg, cgM, inertiaKgM2,inertiaTensorKgM2,inertiaSource,inertiaAssumptions:estimatedMassProperties?.assumptions,rollAxis:pose?pose.rotation.map(row=>row[0]) as HydroPoint:undefined,inertiaMeasured: request.inertiaMeasured });
+  if (mode !== 'calm') pkg = extendCaseWithWaves(pkg, { kind: mode, generationGain, generationWavelengths: wg?.wavelengths, generationStrength: wg?.strength, coupling: request.coupling, heightM: waveHeightM!, periodS: wavePeriodS!, massKg, cgM, inertiaKgM2,inertiaTensorKgM2,inertiaSource,inertiaAssumptions:estimatedMassProperties?.assumptions,rollAxis:pose?pose.rotation.map(row=>row[0]) as HydroPoint:undefined,inertiaMeasured: request.inertiaMeasured });
   // Different observation windows or boundaries must never compare as one protocol.
   const recordedProtocol = {...physicalProtocol,observation:{durationS:pkg.manifest.numerics.durationS,averaging:pkg.manifest.condition.kind==='calm'?'after-warmup':'final-half-after-warmup'},fidelity,exactDomain:{minM:pkg.manifest.domain.minM,maxM:pkg.manifest.domain.maxM}};
   protocolHash = await sha256([encoder.encode(canonical(recordedProtocol))]);

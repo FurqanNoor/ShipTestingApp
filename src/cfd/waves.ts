@@ -8,6 +8,8 @@ export interface WaveCaseSettings {
   generationGain?:number;
   /** Relaxation-zone length in wavelengths and peak relaxation rate in multiples of omega (defaults GEN_WAVELENGTHS, GEN_STRENGTH). */
   generationWavelengths?:number;
+  /** Stronger body-fluid coupling for a retried run whose hull motion blew up (defaults: relaxation 0.4, 2 outer correctors). */
+  coupling?:{relaxation:number;outerCorrectors:number};
   generationStrength?:number;
   /** Regular crest-to-trough height H, not significant irregular-sea height Hs. */
   heightM:number;
@@ -408,7 +410,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
   // than with 0.5 (verification/any-stl-robustness).
   if(quick&&moving){
     control=entry(control,'maxCo',n(Math.min(b.numerics.maxCo,1)));
-    files['system/fvSolution']=textFile(base,'system/fvSolution').replace('nOuterCorrectors 1; nCorrectors 3','nOuterCorrectors 2; nCorrectors 2');
+    files['system/fvSolution']=textFile(base,'system/fvSolution').replace('nOuterCorrectors 1; nCorrectors 3',`nOuterCorrectors ${settings.coupling?.outerCorrectors??2}; nCorrectors 2`);
   }
   // Runtime loading is explicit; no custom unverified dynamic C++ boundary is generated.
   // exprField mixes metres and plain numbers; OpenFOAM's dimension consistency check is switched off for this case only.
@@ -437,7 +439,7 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
     // Body-fluid coupling: accelerationRelaxation 0.4 with damping 0.9 (was 0.7 / 1). A light, very stiff hull (a 150 g
     // twin-pod SWATH, GM 0.53 m, roll period ~0.16 s) made the partitioned coupling diverge: roll rate 1e95 rad/s by 0.8 s.
     // With 0.4 / 0.9 the same case runs stably (verification on Roihu, 2026-11-18).
-    files['constant/dynamicMeshDict']=foamHeader('dynamicMeshDict','dictionary','constant')+`dynamicFvMesh dynamicMotionSolverFvMesh;\nmotionSolverLibs ("libsixDoFRigidBodyMotion.so");\nmotionSolver sixDoFRigidBodyMotion;\nsixDoFRigidBodyMotionCoeffs\n{\n    patches (hull);\n    innerDistance ${n(L*.05)};\n    outerDistance ${n(outerDistance)};\n    centreOfMass ${v(cg)};\n    orientation (${inertiaOrientation.flat().map(n).join(' ')});\n    initialOrientation (${inertiaOrientation.flat().map(n).join(' ')});\n    mass ${n(b.load.massKg)};\n    momentOfInertia ${v(solverInertia)};\n    rho rho;\n    report yes;\n    accelerationRelaxation 0.4;\n    accelerationDamping 0.9;\n    solver { type Newmark; }\n    constraints\n    {\n        heaveOnly\n        {\n            sixDoFRigidBodyMotionConstraint line;\n            centreOfRotation ${v(cg)};\n            direction (0 0 1);\n        }\n        rollOnly\n        {\n            sixDoFRigidBodyMotionConstraint axis;\n            axis (1 0 0);\n        }\n    }\n}\n`;
+    files['constant/dynamicMeshDict']=foamHeader('dynamicMeshDict','dictionary','constant')+`dynamicFvMesh dynamicMotionSolverFvMesh;\nmotionSolverLibs ("libsixDoFRigidBodyMotion.so");\nmotionSolver sixDoFRigidBodyMotion;\nsixDoFRigidBodyMotionCoeffs\n{\n    patches (hull);\n    innerDistance ${n(L*.05)};\n    outerDistance ${n(outerDistance)};\n    centreOfMass ${v(cg)};\n    orientation (${inertiaOrientation.flat().map(n).join(' ')});\n    initialOrientation (${inertiaOrientation.flat().map(n).join(' ')});\n    mass ${n(b.load.massKg)};\n    momentOfInertia ${v(solverInertia)};\n    rho rho;\n    report yes;\n    accelerationRelaxation ${n(settings.coupling?.relaxation??.4)};\n    accelerationDamping 0.9;\n    solver { type Newmark; }\n    constraints\n    {\n        heaveOnly\n        {\n            sixDoFRigidBodyMotionConstraint line;\n            centreOfRotation ${v(cg)};\n            direction (0 0 1);\n        }\n        rollOnly\n        {\n            sixDoFRigidBodyMotionConstraint axis;\n            axis (1 0 0);\n        }\n    }\n}\n`;
     const patches=['inlet','outlet','port','starboard','bottom','atmosphere','hull'];
     files['0/pointDisplacement']=foamHeader('pointDisplacement','pointVectorField','0')+`dimensions [0 1 0 0 0 0 0];\ninternalField uniform (0 0 0);\nboundaryField\n{\n${patches.map(p=>`    ${p} { type ${p==='hull'?'calculated':'fixedValue'}; value uniform (0 0 0); }`).join('\n')}\n}\n`;
     control=appendFunction(control,'    rigidBodyState\n    {\n        type sixDoFRigidBodyState; libs ("libsixDoFRigidBodyState.so");\n        angleFormat radians;\n        writeControl timeStep; writeInterval 1;\n    }');

@@ -48,6 +48,13 @@ export function conditionPhases(condition,speed=condition?.speed){
   if(speed==='quick'&&condition?.runs?.some(r=>r.phase==='coarse'))return ['coarse'];
   return phasesFor(speed,condition?.mode);
 }
+/**
+ * Automatic retry for a wave run whose hull motion blew up (light hulls whose added mass outweighs them, e.g. a 150 g
+ * wide flat scow: heave velocity flipped sign every step and reached 1e31 m/s by t = 0.024 s). The retry uses stronger
+ * coupling: accelerationRelaxation 0.2 and 3 outer correctors.
+ */
+export const STABILISED_COUPLING={relaxation:.2,outerCorrectors:3};
+export const COUPLING_FAILURE='Hull motion became numerically unstable';
 const TERMINAL=new Set(['completed','failed','cancelled','blocked','interrupted','skipped']);
 const finite=v=>typeof v==='number'&&Number.isFinite(v);
 const copy=v=>JSON.parse(JSON.stringify(v));
@@ -247,11 +254,21 @@ export class StudyRunner {
     const reference=getResult(condition.runs.find(r=>r.phase==='coarse'));
     const run={phase,status:'preparing'};condition.runs.push(run);condition.stage=`${phase}: preparing`;study.stage=`${condition.label} · ${phase}`;await this.save(study);
     try{
-      const job=await this.runCase({...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration&&planned.request.mode!=='calm'?{waveGeneration:study.options.experiment.waveGeneration}:{})},{
+      const request={...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration&&planned.request.mode!=='calm'?{waveGeneration:study.options.experiment.waveGeneration}:{})};
+      const context=()=>({
         studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
         onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
       });
+      const job=await this.runCase(request,context());
       this.applyJob(study,condition,run,job);
+      if(run.status==='failed'&&planned.request.mode!=='calm'&&!run.coupling&&run.hint?.title===COUPLING_FAILURE&&study.status!=='cancelled'){
+        run.firstAttempt={jobId:run.jobId,error:run.error};run.coupling='stabilised';
+        if(study.activeJobIds)study.activeJobIds=study.activeJobIds.filter(id=>id!==run.jobId);
+        if(condition.hint===run.hint)condition.hint=null;
+        run.status='running';run.error=null;run.hint=null;condition.stage=`${phase}: retrying with stronger hull-motion coupling`;await this.save(study);
+        const retry=await this.runCase({...request,coupling:STABILISED_COUPLING},context());
+        this.applyJob(study,condition,run,retry);
+      }
     }catch(error){
       if(study.status==='cancelled'){run.status='cancelled';return false;}
       run.status=error.preflight===true?'blocked':'failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);if(run.hint&&!condition.hint)condition.hint=run.hint;

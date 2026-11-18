@@ -166,3 +166,18 @@ test('a restored local study, or a cluster study with no watched job, is marked 
   await runner.restore({schema:1,id:'s4',name:'Hull',status:'running',options:{speed:'full',cores:8},progress:{},conditions:[{id:'a',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
   assert.equal(runner.get('s4').status,'interrupted');
 });
+
+test('a wave run whose hull motion blows up is retried once with stronger coupling',async()=>{
+  const {STABILISED_COUPLING,COUPLING_FAILURE}=await import('./study-runner.mjs');
+  const calls=[];
+  const runner=new StudyRunner({cancelCase:async()=>{},runCase:async(request,context)=>{
+    calls.push({request,context});const id='job-'+calls.length;await context.onQueued(id);
+    if(calls.length===1)return {id,status:'failed',error:'Angular velocity: (9.2e+28 0 0)',hint:{title:COUPLING_FAILURE,hint:'x'},result:null};
+    return {id,status:'completed',result:solverResult(context.phase)};}});
+  const p=plan(1);p.conditions[0].mode='beam-waves';p.conditions[0].request.mode='beam-waves';p.conditions[0].request.wavePeriodS=.45;
+  await runner.create(p,{id:'retry',speed:'quick'});await runner.running;
+  const c=runner.get('retry').conditions[0];
+  assert.equal(calls.length,2);assert.equal(calls[0].request.coupling,undefined);assert.deepEqual(calls[1].request.coupling,STABILISED_COUPLING);
+  assert.equal(c.runs.length,1);assert.equal(c.runs[0].status,'completed');assert.equal(c.runs[0].coupling,'stabilised');assert.equal(c.runs[0].firstAttempt.jobId,'job-1');
+  assert.equal(c.hint??null,null);assert.deepEqual(runner.get('retry').activeJobIds??[],[]);
+});
