@@ -54,9 +54,10 @@ view.onLive = (l) => {
 
 // ---------- models ----------
 
-function addModel(name: string, file: string, raw: Float32Array, example = false): Model {
-  const unit = example ? 1 : guessUnitScale(raw);
-  const orient = example ? IDENTITY : autoOrient(raw);
+function addModel(name: string, file: string, raw: Float32Array, example = false, placed = false): Model {
+  // placed: geometry restored from an OpenFOAM study is already in mm and oriented exactly as it was tested.
+  const unit = example || placed ? 1 : guessUnitScale(raw);
+  const orient = example || placed ? IDENTITY : autoOrient(raw);
   const p = place(raw, orient, unit);
   const m: Model = { id: nextId++, name, file, example, raw, unit, orient, placed: p.tris, size: p.size, result: null, error: null, run: 0, shape: 0 };
   state.models.push(m);
@@ -105,6 +106,7 @@ async function addFiles(files: File[]) {
 
 function removeModel(id: number) {
   const m = state.models.find((x) => x.id === id);
+  if (m && !m.example) dismissHull(m.name);
   if (m) m.run++;
   state.models = state.models.filter((x) => x.id !== id);
   if (state.sel === id) state.sel = state.models[0]?.id ?? -1;
@@ -245,6 +247,46 @@ function cfdBoardInner(): string {
       ${cell(n(r.dragMN, 2), r.scoreDrag)}${cell(n(r.rollDeg), r.scoreRoll)}${cell(n(r.gmMm), r.scoreStability)}<td class="num">${n(r.total, 0)}</td></tr>`).join("")}
     </tbody></table></div><p class="note">Score = average of drag, roll and stability (one third each). Best in each category = 100 points, the rest in proportion; a hull that sinks or capsizes ranks below all hulls without failures. ${reference ? `Compared at: ${esc(reference.speed === "quick" ? "Quick" : "Full")} · ${reference.cores ?? "?"} cores · setup ${esc(reference.protocol)}.` : ""} Hover a row for details.</p>`;
 }
+// ---------- hulls with OpenFOAM tests come back after a reload ----------
+// The workbench only lives in this tab; studies (and their exact tested geometry) live on the server. On load, every hull
+// with a study is put back. Closing one (x) hides it until it gets a newer study.
+const DISMISSED_KEY = "hull-bench-dismissed-hulls";
+function dismissed(): Record<string, string> { try { return JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "{}") ?? {}; } catch { return {}; } }
+function newestStudyOf(name: string): { id: string; createdAt: string } | null {
+  const own = (cfdStudies ?? []).map((x) => x as { id?: string; name?: string; createdAt?: string }).filter((x) => x.name === name && x.id);
+  own.sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")));
+  return own[0] ? { id: String(own[0].id), createdAt: String(own[0].createdAt ?? "") } : null;
+}
+function dismissHull(name: string) {
+  const s = newestStudyOf(name);
+  if (!s) return;
+  try { localStorage.setItem(DISMISSED_KEY, JSON.stringify({ ...dismissed(), [name]: s.createdAt })); } catch { /* per-browser convenience */ }
+}
+let restoredOnce = false;
+async function restoreTestedHulls() {
+  if (restoredOnce || !cfdStudies) return;
+  restoredOnce = true;
+  const hidden = dismissed(), have = new Set(state.models.map((m) => m.name));
+  const names = [...new Set(cfdStudies.map((x) => String((x as { name?: string }).name ?? "")).filter(Boolean))].sort();
+  const added: Model[] = [];
+  for (const name of names) {
+    const s = newestStudyOf(name);
+    if (!s || have.has(name) || (hidden[name] && hidden[name] >= s.createdAt)) continue;
+    try {
+      const r = await fetch(`/api/cfd/studies/${s.id}/geometry`);
+      if (!r.ok) continue;
+      const g = await r.json() as { trianglesMm?: number[] };
+      if (!Array.isArray(g.trianglesMm) || !g.trianglesMm.length || g.trianglesMm.length % 9) continue;
+      added.push(addModel(name, `${name}.stl`, Float32Array.from(g.trianglesMm), false, true));
+    } catch { /* leave the workbench as it is */ }
+  }
+  if (!added.length) return;
+  const wasExample = current()?.example ?? true;
+  state.models = state.models.filter((m) => !m.example);
+  if (wasExample) state.sel = added[0].id;
+  render();
+  for (const m of added) await runModel(m);
+}
 async function refreshCfdBoard() {
   try {
     const r = await fetch("/api/cfd/studies");
@@ -253,6 +295,7 @@ async function refreshCfdBoard() {
     cfdStudies = Array.isArray(d) ? d : Array.isArray(d?.studies) ? d.studies : [];
     const el = document.getElementById("cfd-board");
     if (el) el.innerHTML = cfdBoardInner();
+    void restoreTestedHulls();
   } catch { /* plain preview build without the OpenFOAM server */ }
 }
 void refreshCfdBoard();

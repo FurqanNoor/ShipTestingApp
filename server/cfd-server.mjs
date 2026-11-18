@@ -545,7 +545,7 @@ const server=http.createServer(async(req,res)=>{
       const experiment=speed==='experiment'&&body.experiment&&typeof body.experiment==='object'?{waveGeneration:{...(Number.isFinite(body.experiment.wavelengths)?{wavelengths:body.experiment.wavelengths}:{}),...(Number.isFinite(body.experiment.strength)?{strength:body.experiment.strength}:{}),...(Number.isFinite(body.experiment.gainScale)?{gainScale:body.experiment.gainScale}:{})}}:undefined;
       const study=await createStudy(plan,fix.trianglesMm,{speed,cores,...(experiment?{experiment}:{})});return json(res,202,publicStudy(studyRunner.get(study.id)));
     }
-    const studyMatch=/^\/api\/cfd\/studies\/([a-f0-9-]{36})(?:\/(cancel|download|rerun))?$/.exec(path);
+    const studyMatch=/^\/api\/cfd\/studies\/([a-f0-9-]{36})(?:\/(cancel|download|rerun|geometry))?$/.exec(path);
     if(studyMatch){
       const record=studyRunner.get(studyMatch[1]);if(!record)return json(res,404,{error:'Unknown local automatic study.'});
       if(!studyMatch[2]&&req.method==='GET')return json(res,200,publicStudy(record));
@@ -561,6 +561,11 @@ const server=http.createServer(async(req,res)=>{
         const plan=core.createAutomaticPlan({name:record.name,trianglesMm});const problem=selectConditions(plan,ids);if(problem)return json(res,400,{error:problem});
         const study=await createStudy(plan,trianglesMm,{speed:['quick','full'].includes(body.speed)?body.speed:record.options?.speed??'full',cores:clampCores(Number(record.options?.cores))});
         return json(res,202,publicStudy(studyRunner.get(study.id)));
+      }
+      if(studyMatch[2]==='geometry'&&req.method==='GET'){
+        // The placed (oriented, mm) triangles the study was run with, so the workbench can show the hull again after a reload.
+        try{const trianglesMm=await loadGeometry(record.id);return json(res,200,{id:record.id,name:record.name,trianglesMm});}
+        catch{return json(res,404,{error:'This study has no stored geometry.'});}
       }
       if(studyMatch[2]==='download'&&req.method==='GET'){
         res.writeHead(200,{'Content-Type':'application/json','Content-Disposition':`attachment; filename="openfoam-study-${record.id}.json"`});return res.end(JSON.stringify(publicStudy(record),null,2));
