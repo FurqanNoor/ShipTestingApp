@@ -9,7 +9,9 @@ export const MAX_CAD_TRIANGLES=500_000;
  * gain: wave-maker amplitude gain per grid, from 2D empty-tank calibration of the generated wave cases (achieved/target
  * height at the hull gauges without gain: quick low 0.69, medium 0.74, high 0.79; Full coarse grid 0.91, 0.935, 0.94). Each run still measures the wave it got.
  */
-export const AUTOMATIC_WAVE_PRESETS=[{id:'medium',label:'Medium',height:.0073,period:.45,gain:{quick:1/.74,standard:1/.935}},{id:'high',label:'High',height:.012,period:.6,gain:{quick:1/.79,standard:1/.94}}] as const;
+// quick gains recalibrated 2026-11-19 on 3D hull runs with incident/reflected separation (the 2D empty-tank values
+// 1/.74 and 1/.79 gave incident waves 12-17% high in 3D): medium 1/.861, high 1/.910, with GEN_STRENGTH 12.
+export const AUTOMATIC_WAVE_PRESETS=[{id:'medium',label:'Medium',height:.0073,period:.45,gain:{quick:1/.861,standard:1/.935}},{id:'high',label:'High',height:.012,period:.6,gain:{quick:1/.910,standard:1/.94}}] as const;
 /**
  * Wave-maker gain for a grid. Medium and fine grids refine the coarse one by sqrt(2) each; the generated wave's
  * numerical damping is second order in cell size, so the coarse height deficit (1 - g) halves per level.

@@ -173,7 +173,13 @@ export const WAVE_DEPTH_WAVELENGTHS=.6,BEAM_X_MARGIN=.5,BEAM_Y_GAP_WAVELENGTHS=.
  * finite-depth (Stokes I) kinematics each step and a density-weighted acousticDampingSource relaxes U toward it with a
  * rate ramping to GEN_STRENGTH x omega at the wall. The same zone absorbs waves reflected or radiated back toward it.
  */
-export const GEN_WAVELENGTHS=1,GEN_STRENGTH=5;
+/*
+ * GEN_STRENGTH 12 (was 5, 2026-11-19): waves the hull reflects/radiates back were only partly absorbed by the zone and
+ * re-reflected, so a strongly rolling hull got a bigger incoming wave (incident 1.33x target for a 01 Deep V at 250 g in
+ * medium waves vs 1.17x for a catamaran). Strength 12 cut that build-up about as much as a 2-wavelength zone (+21% cells)
+ * at no cost: Deep V 1.13x, low-reflection hulls 1.0x (Roihu experiments, 18 Nov; see verification/wave-maker-2026-11-18).
+ */
+export const GEN_WAVELENGTHS=1,GEN_STRENGTH=12;
 /**
  * Beam-wave gauge positions, in wavelengths up-wave of the hull's side. They stay clear of the hull's near field
  * (evanescent modes decay to ~25% by 0.25 wavelength in this depth) and of the generation zone 0.5 wavelength away.
