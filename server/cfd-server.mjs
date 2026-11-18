@@ -637,6 +637,8 @@ for(const entry of await readdir(STUDIES,{withFileTypes:true})){
   if(!entry.isFile()||entry.isSymbolicLink()||!/^[a-f0-9-]{36}\.json$/.test(entry.name))continue;
   try{await studyRunner.restore(JSON.parse(await readFile(resolve(STUDIES,entry.name),'utf8')));}catch{/* Ignore incomplete study snapshots; never fabricate progress or resume execution. */}
 }
+// Check the cluster connection at startup, so tests can be started without pressing Test connection first.
+if(clusterConfig.enabled&&clusterConfig.user)void cluster.checkCluster(clusterConfig).then(r=>{clusterCheck={ok:true,at:new Date().toISOString(),...r};},e=>{clusterCheck={ok:false,at:new Date().toISOString(),error:e.message};});
 if(clusterJobs.size)void pollCluster();
 for(const id of studyRunner.activeIds){const r=studyRunner.records.get(id);if(r)void ensurePredictions(r).catch(()=>{});}
 server.listen(PORT,HOST,()=>console.log(`Hull Test Bench + OpenFOAM: http://${HOST}:${PORT}\nJobs remain in ${RUNS}\nImage: ${IMAGE}\nResources: ${defaultCores} of ${maxCores} CPU cores by default (choose in the app), ${memory} RAM. CFD output remains unvalidated until convergence and physical testing.`));
