@@ -245,7 +245,11 @@ export class StudyRunner {
         await Promise.all(conditions.map(async({planned,condition})=>{
           const phases=phasesFor(speed);
           if(!(await this.runPhase(study,condition,planned,phases[0],speed))){this.finishCondition(study,condition);return;}
-          await Promise.all(phases.slice(1).map(phase=>this.runPhase(study,condition,planned,phase,speed)));
+          // Time-step and domain checks compare against the coarse result: without one they are skipped (as in the
+          // sequential path) instead of spending cluster time on runs that cannot be assessed.
+          const hasCoarse=!!getResult(condition.runs.find(r=>r.phase==='coarse'));
+          for(const phase of phases.slice(1))if(!hasCoarse&&['time-step','domain'].includes(phase))condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});
+          await Promise.all(phases.slice(1).filter(phase=>hasCoarse||!['time-step','domain'].includes(phase)).map(phase=>this.runPhase(study,condition,planned,phase,speed)));
           this.finishCondition(study,condition);await this.save(study);
         }));
       }else{

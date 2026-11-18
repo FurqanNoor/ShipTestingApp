@@ -29,7 +29,7 @@ test('on a cluster every condition starts at once, and other phases follow each 
   let running=0,peak=0;const order=[];
   const runner=new StudyRunner({slots:()=>({studies:5,runs:64}),cancelCase:async()=>{},runCase:async(req,ctx)=>{
     running++;peak=Math.max(peak,running);order.push(`${ctx.conditionId}:${ctx.phase}`);await ctx.onQueued('job-'+order.length);
-    await new Promise(r=>setTimeout(r,20));running--;return {id:'job-'+order.length,status:'completed',result:null};}});
+    await new Promise(r=>setTimeout(r,20));running--;return {id:'job-'+order.length,status:'completed',result:{source:'OpenFOAM'}};}});
   await runner.create(plan(3),{id:'cluster-study',speed:'full',backend:'cluster'});await runner.running;
   const r=runner.get('cluster-study');
   assert.equal(order.length,15);assert.equal(r.status,'completed');assert.equal(r.options.backend,'cluster');
@@ -58,4 +58,15 @@ test('Roihu daily SSH certificate validity is read and a missing certificate is 
   assert.equal(s.required,true);assert.equal(s.exists,false);assert.equal(s.valid,false);assert.match(s.message,/Sign and download SSH certificate/);
   const other=await certificateStatus(normaliseClusterConfig({...good,host:'cluster.example.org',sshKey:'/nonexistent/key'}));
   assert.equal(other.required,false);
+});
+
+test('on a cluster, a failed coarse run skips the time-step and domain checks instead of running them',async()=>{
+  const order=[];
+  const runner=new StudyRunner({slots:()=>({studies:5,runs:64}),cancelCase:async()=>{},runCase:async(req,ctx)=>{
+    order.push(ctx.phase);await ctx.onQueued('job-'+order.length);
+    return ctx.phase==='coarse'?{id:'job-'+order.length,status:'failed',error:'Floating point exception',result:null}:{id:'job-'+order.length,status:'completed',result:{source:'OpenFOAM'}};}});
+  await runner.create(plan(1),{id:'s',speed:'full',backend:'cluster'});await runner.running;
+  assert.deepEqual(order.sort(),['coarse','fine','medium']);
+  const runs=runner.get('s').conditions[0].runs;
+  assert.deepEqual(runs.filter(r=>r.status==='skipped').map(r=>r.phase).sort(),['domain','time-step']);
 });
