@@ -15,8 +15,12 @@ export const SENSITIVITY_TOLERANCE=.05;
  * Wave tests in Full mode skip the medium mesh: on Roihu it took 8-10 h per wave test (2.8x the cells at half the
  * time step, and interFoam stops scaling beyond ~100 cores), against ~1.5 h for coarse. Calm tests keep it (~1 h).
  */
-const WAVE_PHASES=['coarse','time-step'];
-/** quick: one fast screening solve per condition. full: calm = mesh + time-step checks (3 solves), waves = time-step check (2). */
+/**
+ * Waves in Full mode: one run, identical to Quick (2026-11-19). The half-time-step copy doubled the run (~2 h) and on
+ * every SWATH wave test of 18 Nov changed RMS roll by only 0.4-1.8% (limit 5%); the calm checks catch the real problems.
+ */
+const WAVE_PHASES=['coarse'];
+/** quick: one fast screening solve per condition. full: calm = mesh + time-step checks (3 solves), waves = 1 solve. */
 export const SPEEDS={quick:['coarse'],full:PHASES,
   // Verification only (never ranked: the leaderboard compares studies of the same speed): medium + fine grids, to
   // measure how far the coarse/medium calm drag is from mesh convergence.
@@ -77,12 +81,14 @@ export function assessCondition(condition){
   checks.push(check('Mesh sensitivity',distinct&&meshChange!==null?meshChange<=tol:null,
     condition.mode==='beam-waves'?`Coarse-to-medium RMS roll change must be at most ${pct}%; tiny responses are inconclusive.`:`Coarse-to-medium drag change must be at most ${pct}%; near-zero drag is inconclusive.`,{relativeChange:meshChange,threshold:tol}));
   }
+  if(phases.includes('time-step')){
   const actualFineDt=coarse?.solverRun?.actualDeltaTS?.maximum,actualHalfDt=half?.solverRun?.actualDeltaTS?.maximum;
   const dtComparable=comparable(coarse,half)&&cells(coarse)===cells(half);
   const dtReduced=dtComparable&&finite(actualFineDt)&&actualFineDt>0&&finite(actualHalfDt)&&actualHalfDt>0&&actualHalfDt<=actualFineDt*.6;
   checks.push(check('Actual time-step reduction',!!dtReduced,'The largest recorded solver time step must decrease by at least 40%; changing an inactive cap alone is inconclusive.'));
   const dtChange=dtComparable?difference(coarse,half,condition.mode):null;
   checks.push(check('Time-step sensitivity',dtReduced&&dtChange!==null?dtChange<=tol:null,`Coarse-grid reference and half-step response must differ by at most ${pct}%.`,{relativeChange:dtChange,threshold:tol}));
+  }
   const reference=(meshStudy?medium:null)??coarse,referenceRun=reference?[...byPhase.values()].find(r=>r.result===reference):null;
   const metrics=reference?{
     referenceJobId:referenceRun?.jobId??null,referenceMesh:referenceRun?.phase??null,
@@ -121,7 +127,8 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
   const tris=request.trianglesMm;let xmin=Infinity,xmax=-Infinity;
   for(let i=0;i<tris.length;i+=3){xmin=Math.min(xmin,tris[i]);xmax=Math.max(xmax,tris[i]);}
   const lengthM=(xmax-xmin)/1000,period=request.wavePeriodS;
-  if(speed==='quick'||speed==='experiment'){
+  // Full-mode wave tests run exactly the Quick wave case (see WAVE_PHASES).
+  if(speed==='quick'||speed==='experiment'||(speed==='full'&&request.mode!=='calm'&&phase==='coarse')){
     // Calm: 40 hull lengths of towing, averaged over the last 60%. 30 s Roihu runs of real competition-style hulls settled
     // only after ~8-12 s; a 16 L/U run (11.7 s) read 9-23% low by different amounts per hull. 12-30 s is within ~2-5%.
     // Waves: arrival + 8 periods (set by the case generator).

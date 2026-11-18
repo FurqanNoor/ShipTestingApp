@@ -44,7 +44,7 @@ test('wave comparisons use RMS roll rather than a near-zero mean longitudinal fo
 });
 test('unsettled wave response, failed detailed meshes and missing genuine channels remain inconclusive',()=>{
   for(const mutate of [r=>{r.motion.rollRmsDriftWithinTolerance=false;},r=>{r.quality.detailedMeshOkay=false;},r=>{r.source='empirical-preview';}]){
-    const c=condition('beam-waves');mutate(c.runs[2].result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
+    const c=condition('beam-waves');mutate(c.runs.find(r=>r.phase==='coarse').result);assert.equal(assessCondition(c).numericalSensitivityPassed,false);
   }
 });
 test('a changed observation window makes the time-step comparison inconclusive',()=>{
