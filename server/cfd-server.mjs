@@ -161,8 +161,12 @@ function runRemainingS(j,manifest){
   const pred=predictS(manifest,0,'cluster');
   if(j&&TERMINAL_JOB.has(j.status))return 0;
   const p=j?.progress;
-  if(p?.step==='interFoam'&&Number.isFinite(p.etaS)){
-    const done=Math.max(0,Math.min(1,(p.percent??0)/100)),w=Math.min(1,done/.1);
+  if(p?.step==='interFoam'||p?.percent>0){
+    const done=Math.max(0,Math.min(1,(p.percent??0)/100));
+    if(done>=.995)return 60; // solved; only the result download is left
+    // No live rate yet (just started, or the rate window was reset after a log skip): prediction for what is left.
+    if(!Number.isFinite(p.etaS))return Math.max(0,pred.solveS*(1-done));
+    const w=Math.min(1,done/.1);
     return w*p.etaS+(1-w)*Math.max(0,pred.solveS*(1-done));
   }
   const elapsed=j?.timing?.runningAt?(Date.now()-j.timing.runningAt)/1000:0;
