@@ -3,7 +3,10 @@ import http from 'node:http';
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomUUID,createHash} from 'node:crypto';
-import {readFile,writeFile,mkdir,readdir,stat,rename} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,readdir,stat,rename as renameOnce} from 'node:fs/promises';
+/** Windows: a just-written file can be briefly locked by an antivirus or sync client (EPERM/EBUSY on rename; it aborted a
+ * study on 19 Nov). Retry with backoff, about 3 s in total. */
+const rename=async(from,to)=>{for(let i=0;;i++){try{return await renameOnce(from,to);}catch(error){if(!['EPERM','EBUSY','EACCES'].includes(error?.code)||i>=8)throw error;await new Promise(r=>setTimeout(r,25*2**Math.min(i,6)));}}};
 import {existsSync} from 'node:fs';
 import {resolve,dirname,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';

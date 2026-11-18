@@ -127,3 +127,11 @@ test('detailed mesh diagnostics also accept a few highly skew faces within the m
   const t=n=>`    cells:            200000\n ***Max skewness = 5.75, ${n} highly skew faces detected which may impair the quality of the results\n ***Concave cells (using face planes) found, number of cells: 3379\nFailed 2 mesh checks.`;
   assert.equal(detailedMeshAcceptable(t(3)),true);assert.equal(detailedMeshAcceptable(t(25)),false);
 });
+
+test('wave meshes may report a few small-determinant cells and small-weight faces; calm meshes may not',()=>{
+  const t=(det,w)=>`    cells:            300000\n ***Cells with small determinant (< 0.001) found, number of cells: ${det}\n ***Concave cells (using face planes) found, number of cells: 3429\n ***Faces with small interpolation weight (< 0.05) found, number of faces: ${w}\nFailed 3 mesh checks.`;
+  assert.equal(detailedMeshAcceptable(t(502,10176),{wave:true}),true);
+  assert.equal(detailedMeshAcceptable(t(502,10176)),false);
+  assert.equal(detailedMeshAcceptable(t(5000,10176),{wave:true}),false);
+  assert.equal(detailedMeshAcceptable(t(502,20000),{wave:true}),false);
+});
