@@ -8,6 +8,7 @@ import { buildWorkbook } from "../report";
 import { Rest, View3D } from "./view3d";
 import { attachCfdPanel,type CfdSelection } from "./cfdPanel";
 import {attachAutomaticPanel} from "./automaticPanel";
+import { cfdLeaderboard } from "../cfd/leaderboard";
 
 interface Model {
   id: number;
@@ -221,8 +222,39 @@ function panelHtml(m: Model): string {
         <td>${x.label}<small>${x.sub}</small></td><td class="num">${f(x.drag * 1000, 2)}</td><td>${f(x.ct, 4)}</td><td class="num ${x.rollCls}">${x.roll}</td><td>${x.buoy}</td><td class="${x.deckCls}">${x.deck}</td></tr>`).join("")}
       </tbody></table></div><p class="note">Select a row to play it in the tank.</p></div>`;
   }
-  return html + leaderboardHtml() + conditionsHtml();
+  return html + boardsHtml() + conditionsHtml();
 }
+
+// ---------- leaderboards: instant estimate (this page) and OpenFOAM (solver results), side by side ----------
+let cfdStudies: unknown[] | null = null;
+function boardsHtml(): string {
+  return `<div class="boards">${leaderboardHtml()}<div class="sec" id="cfd-board">${cfdBoardInner()}</div></div>`;
+}
+function cfdBoardInner(): string {
+  if (cfdStudies === null) return `<h2>OpenFOAM ranking <span>solver results</span></h2><p class="note">Start the app with <code>npm run cfd</code> to see OpenFOAM results here.</p>`;
+  const { rows, reference } = cfdLeaderboard(cfdStudies);
+  if (!rows.length) return `<h2>OpenFOAM ranking <span>solver results</span></h2><p class="note">No OpenFOAM results yet. Use <b>OpenFOAM → Run automatic tests</b>.</p>`;
+  const n = (v: number | null, d = 1) => (v === null ? "-" : v.toFixed(d));
+  const cell = (value: string, score: number | null) => `<td>${value}<small>${score === null ? "" : `${n(score, 0)} pts`}</small></td>`;
+  const tag = (r: (typeof rows)[number]) => r.status === "ranked" ? (r.failures ? `<small style="color:var(--bad)">${r.failures} failed test${r.failures > 1 ? "s" : ""}</small>` : "") : `<small style="color:var(--warn, #c90)">${r.status === "incomplete" ? "Not ranked yet" : "Different settings"}</small>`;
+  return `<h2>OpenFOAM ranking <span>CFD solver results</span></h2><div class="tablewrap"><table>
+    <thead><tr><th>#</th><th style="text-align:left">Hull</th><th>Calm drag<br>mN</th><th>Max roll<br>deg</th><th>GM<br>mm</th><th>Score</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}" title="${esc(r.note || r.settingsLabel)}"><td><span class="place">${r.place ?? "—"}</span></td><td style="text-align:left;white-space:normal">${esc(r.name)}${tag(r)}</td>
+      ${cell(n(r.dragMN, 2), r.scoreDrag)}${cell(n(r.rollDeg), r.scoreRoll)}${cell(n(r.gmMm), r.scoreStability)}<td class="num">${n(r.total, 0)}</td></tr>`).join("")}
+    </tbody></table></div><p class="note">Score = average of drag, roll and stability (one third each). Best in each category = 100 points, the rest in proportion; a hull that sinks or capsizes ranks below all hulls without failures. ${reference ? `Compared at: ${esc(reference.speed === "quick" ? "Quick" : "Full")} · ${reference.cores ?? "?"} cores · setup ${esc(reference.protocol)}.` : ""} Hover a row for details.</p>`;
+}
+async function refreshCfdBoard() {
+  try {
+    const r = await fetch("/api/cfd/studies");
+    if (!r.ok) return;
+    const d = await r.json();
+    cfdStudies = Array.isArray(d) ? d : Array.isArray(d?.studies) ? d.studies : [];
+    const el = document.getElementById("cfd-board");
+    if (el) el.innerHTML = cfdBoardInner();
+  } catch { /* plain preview build without the OpenFOAM server */ }
+}
+void refreshCfdBoard();
+setInterval(() => void refreshCfdBoard(), 30_000);
 
 function ranked() {
   const pool = state.models.filter((m) => m.result);
@@ -232,9 +264,9 @@ function ranked() {
 
 function leaderboardHtml(): string {
   const rows = rankModels(ranked());
-  if (!rows.length) return "";
+  if (!rows.length) return `<div class="sec"><h2>Instant estimate ranking <span>quick preview · not CFD</span></h2><p class="note">Add STL files to compare them instantly.</p></div>`;
   const cell = (value: string, score: number) => `<td>${value}<small>${f(score, 0)} pts</small></td>`;
-  return `<div class="sec"><h2>Preview comparison <span>estimates · not validated placements</span></h2><div class="tablewrap"><table>
+  return `<div class="sec"><h2>Instant estimate ranking <span>quick preview · not CFD</span></h2><div class="tablewrap"><table>
     <thead><tr><th>#</th><th style="text-align:left">Model</th><th>Avg drag<br>mN</th><th>Avg max<br>roll</th><th>Max load<br>g</th><th>Score</th></tr></thead><tbody>
     ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}"><td><span class="place">${r.place || "—"}</span></td><td style="text-align:left;white-space:normal">${esc(r.name)}${r.failures ? `<small style="color:var(--bad)">${r.failures} failed case${r.failures > 1 ? "s" : ""}</small>` : ""}</td>
       ${cell(f(r.dragMN, 2), r.scoreDrag)}${cell(Number.isFinite(r.rollDeg) ? `${f(r.rollDeg)}&deg;` : "-", r.scoreRoll)}${cell(f(r.maxLoadG, 0), r.scoreLoad)}<td class="num">${f(r.total, 0)}</td></tr>`).join("")}
@@ -281,7 +313,7 @@ function render() {
   const m = current();
   const panel = $("panel");
   const scroll = panel.scrollTop;
-  panel.innerHTML = m ? panelHtml(m) : `<div class="empty">Add an STL file to test a hull.</div>`;
+  panel.innerHTML = m ? panelHtml(m) : `<div class="empty">Add an STL file to test a hull.</div>${boardsHtml()}`;
   panel.scrollTop = scroll;
 
   // stage controls

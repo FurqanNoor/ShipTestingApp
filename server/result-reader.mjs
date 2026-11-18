@@ -81,13 +81,14 @@ export function meshGate(meshText){
   return {ok:tolerated,tolerated,softFaces,cells,limit};
 }
 
-export function analyseWaveGauges(text,{startS,endS,targetHeightM,targetPeriodS}){
-  const rows=[];
+export function analyseWaveGauges(text,{startS,endS,targetHeightM,targetPeriodS,wavelengthM=null,direction=null}){
+  const rows=[];let positions=null;
   for(const line of text.split(/\r?\n/)){
     if(!line.trim()||line.trim().startsWith('#'))continue;
     const t=finiteToken(line.trim().split(/\s+/)[0]);if(t===null)continue;
-    const vectors=[...line.matchAll(/\(\s*([^\s()]+)\s+([^\s()]+)\s+([^\s()]+)\s*\)/g)].map(m=>finiteToken(m[3]));
-    if(vectors.length&&vectors.every(v=>v!==null))rows.push({t,z:vectors});
+    const matches=[...line.matchAll(/\(\s*([^\s()]+)\s+([^\s()]+)\s+([^\s()]+)\s*\)/g)];
+    const vectors=matches.map(m=>finiteToken(m[3]));
+    if(vectors.length&&vectors.every(v=>v!==null)){rows.push({t,z:vectors});positions??=matches.map(m=>[finiteToken(m[1]),finiteToken(m[2])]);}
   }
   if(!rows.length)return null;
   const gauges=rows[0].z.map((_,g)=>{
@@ -101,12 +102,57 @@ export function analyseWaveGauges(text,{startS,endS,targetHeightM,targetPeriodS}
   });
   const usable=gauges.filter(g=>Number.isFinite(g.heightM));
   if(!usable.length)return {gauges,heightRatio:null,periodRatio:null,withinTolerance:null};
-  // The gauge farthest from the hull (last) sees the least hull reflection; use the mean of usable gauges for the ratio.
-  const heightM=usable.reduce((a,g)=>a+g.heightM,0)/usable.length;
+  const localHeightM=usable.reduce((a,g)=>a+g.heightM,0)/usable.length;
   const periods=usable.filter(g=>Number.isFinite(g.periodS)),periodS=periods.length?periods.reduce((a,g)=>a+g.periodS,0)/periods.length:null;
+  // Incident/reflected separation: gauges beside a hull see the incoming wave plus what the hull reflects and radiates
+  // back (a partial standing wave), so a single gauge can read anywhere from (1-Kr) to (1+Kr) times the incident height.
+  const separation=separateIncidentWave(rows,{startS,endS,periodS:periodS??targetPeriodS,wavelengthM,direction,positions});
+  const heightM=separation?separation.incidentHeightM:localHeightM;
   const heightRatio=targetHeightM>0?heightM/targetHeightM:null,periodRatio=periodS!==null&&targetPeriodS>0?periodS/targetPeriodS:null;
   const withinTolerance=heightRatio!==null&&periodRatio!==null?Math.abs(heightRatio-1)<=WAVE_HEIGHT_TOLERANCE&&Math.abs(periodRatio-1)<=WAVE_PERIOD_TOLERANCE:null;
-  return {gauges,heightM,periodS,targetHeightM,targetPeriodS,heightRatio,periodRatio,withinTolerance,tolerance:{height:WAVE_HEIGHT_TOLERANCE,period:WAVE_PERIOD_TOLERANCE},windowS:[startS,endS]};
+  return {gauges,heightM,heightMethod:separation?'incident (multi-gauge separation)':'mean of gauges',localHeightM,reflectionCoefficient:separation?.reflectionCoefficient??null,periodS,targetHeightM,targetPeriodS,heightRatio,periodRatio,withinTolerance,tolerance:{height:WAVE_HEIGHT_TOLERANCE,period:WAVE_PERIOD_TOLERANCE},windowS:[startS,endS]};
+}
+
+/**
+ * Least-squares split of regular-wave gauge records into an incident and a reflected component (Goda & Suzuki 1976,
+ * extended to N gauges). Each gauge is fitted with c + a cos(wt) + b sin(wt) at the wave period, giving a complex
+ * amplitude Z; then Z(s) = Ai e^{-iks} + Ar e^{iks} is fitted over gauge positions s along the propagation direction.
+ * Returns null when it cannot be done reliably (fewer than 2 gauges, no wavelength, or gauges ~half a wavelength apart).
+ */
+export function separateIncidentWave(rows,{startS,endS,periodS,wavelengthM,direction,positions}){
+  if(!(wavelengthM>0)||!(periodS>0)||!Array.isArray(direction)||!positions||positions.length<2)return null;
+  const w=2*Math.PI/periodS,k=2*Math.PI/wavelengthM,win=rows.filter(r=>r.t>=startS&&r.t<=endS);
+  if(win.length<40)return null;
+  const s=positions.map(p=>p[0]*direction[0]+p[1]*direction[1]);
+  if(s.some(v=>!Number.isFinite(v)))return null;
+  const Z=positions.map((_,g)=>{
+    const S=[[0,0,0],[0,0,0],[0,0,0]],R=[0,0,0];
+    for(let i=1;i<win.length;i++){const r=win[i],dt=r.t-win[i-1].t,f=[1,Math.cos(w*r.t),Math.sin(w*r.t)];for(let a=0;a<3;a++){R[a]+=dt*f[a]*r.z[g];for(let b=0;b<3;b++)S[a][b]+=dt*f[a]*f[b];}}
+    const x=solveLinear(S,R);return x?[x[1],-x[2]]:null;
+  });
+  if(Z.some(z=>!z))return null;
+  // Normal equations for the 2 complex unknowns: M x = r, M = A^H A, r = A^H Z, A[g] = [e^{-iks}, e^{iks}].
+  const N=s.length;let m12=[0,0];const r1=[0,0],r2=[0,0];
+  for(let g=0;g<N;g++){
+    const c=Math.cos(k*s[g]),sn=Math.sin(k*s[g]);
+    // conj(e^{-iks}) = e^{iks}; conj(e^{iks}) = e^{-iks}
+    r1[0]+=c*Z[g][0]-sn*Z[g][1];r1[1]+=c*Z[g][1]+sn*Z[g][0];
+    r2[0]+=c*Z[g][0]+sn*Z[g][1];r2[1]+=c*Z[g][1]-sn*Z[g][0];
+    m12[0]+=Math.cos(2*k*s[g]);m12[1]+=Math.sin(2*k*s[g]);// conj(e^{-iks}) e^{iks} = e^{2iks}
+  }
+  // M = [[N, m12],[conj(m12), N]]; det = N^2 - |m12|^2 (real). Ill-conditioned when all gauges sit ~lambda/2 apart.
+  const det=N*N-(m12[0]**2+m12[1]**2);if(det<.05*N*N)return null;
+  const mul=(a,b)=>[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];
+  const t1=mul(m12,r2),Ai=[(N*r1[0]-t1[0])/det,(N*r1[1]-t1[1])/det];
+  const t2=mul([m12[0],-m12[1]],r1),Ar=[(N*r2[0]-t2[0])/det,(N*r2[1]-t2[1])/det];
+  const ai=Math.hypot(...Ai),ar=Math.hypot(...Ar);
+  return {incidentHeightM:2*ai,reflectedHeightM:2*ar,reflectionCoefficient:ai>0?ar/ai:null,gaugePositionsM:s};
+}
+function solveLinear(A,b){
+  const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
+  for(let i=0;i<n;i++){let p=i;for(let j=i+1;j<n;j++)if(Math.abs(M[j][i])>Math.abs(M[p][i]))p=j;[M[i],M[p]]=[M[p],M[i]];if(Math.abs(M[i][i])<1e-300)return null;
+    for(let j=i+1;j<n;j++){const f=M[j][i]/M[i][i];for(let c=i;c<=n;c++)M[j][c]-=f*M[i][c];}}
+  const x=new Array(n).fill(0);for(let i=n-1;i>=0;i--){let v=M[i][n];for(let c=i+1;c<n;c++)v-=M[i][c]*x[c];x[i]=v/M[i][i];}return x;
 }
 export const WAVE_HEIGHT_TOLERANCE=.1,WAVE_PERIOD_TOLERANCE=.05;
 
@@ -298,8 +344,8 @@ export async function readCfdRunResult(caseDir,options) {
       const gaugeFile=gaugeLocation?.path?await boundedFile(base,gaugeLocation.path,RESULT_LIMIT):null;
       remember(gaugeFile,'wave-gauge-history');
       if(gaugeFile?.text){
-        waves=analyseWaveGauges(gaugeFile.text,{startS:averagingTargetStartTimeS,endS:expectedEndTimeS,targetHeightM:Number(manifest.condition?.heightM),targetPeriodS:wavePeriodS});
-        if(waves?.withinTolerance===false)warnings.push(`Achieved waves differ from the requested regular wave: height ${(100*waves.heightRatio).toFixed(0)}% and period ${(100*waves.periodRatio).toFixed(0)}% of target near the hull (tolerance ±${100*WAVE_HEIGHT_TOLERANCE}% height, ±${100*WAVE_PERIOD_TOLERANCE}% period). The gauges stand close to the hull, so the reading includes waves the hull reflects and radiates (in Roihu tests, gauges 66 mm apart differed by up to 40% beside a rolling hull); the incoming wave is set identically for every hull from an empty-tank calibration. A large deviation can still mean a poorly resolved wave: check the gauge histories.`);
+        waves=analyseWaveGauges(gaugeFile.text,{startS:averagingTargetStartTimeS,endS:expectedEndTimeS,targetHeightM:Number(manifest.condition?.heightM),targetPeriodS:wavePeriodS,wavelengthM:Number(manifest.waves?.waveLengthM),direction:manifest.waves?.propagationDirection??null});
+        if(waves?.withinTolerance===false)warnings.push(`Achieved waves differ from the requested regular wave: ${waves.heightMethod==='mean of gauges'?'height':'incoming (incident) wave height'} ${(100*waves.heightRatio).toFixed(0)}% and period ${(100*waves.periodRatio).toFixed(0)}% of target (tolerance ±${100*WAVE_HEIGHT_TOLERANCE}% height, ±${100*WAVE_PERIOD_TOLERANCE}% period).${waves.reflectionCoefficient!==null?` The hull reflects/radiates ${(100*waves.reflectionCoefficient).toFixed(0)}% of the incoming wave back toward the wave-maker.`:' Without incident/reflected separation the reading includes waves the hull reflects and radiates.'} Check the gauge histories.`);
       }else warnings.push('No wave-gauge history was found; the achieved wave height was not verified.');
     }catch(error){warnings.push('Wave gauge analysis failed: '+error.message);}
   }

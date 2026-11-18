@@ -171,6 +171,12 @@ export const WAVE_DEPTH_WAVELENGTHS=.6,BEAM_X_MARGIN=.5,BEAM_Y_GAP_WAVELENGTHS=.
  * rate ramping to GEN_STRENGTH x omega at the wall. The same zone absorbs waves reflected or radiated back toward it.
  */
 export const GEN_WAVELENGTHS=1,GEN_STRENGTH=5;
+/**
+ * Beam-wave gauge positions, in wavelengths up-wave of the hull's side. They stay clear of the hull's near field
+ * (evanescent modes decay to ~25% by 0.25 wavelength in this depth) and of the generation zone 0.5 wavelength away.
+ * Spacing 0.075 wavelength (k dx ~ 0.47 per pair, 1.4 overall) keeps the incident/reflected separation well conditioned.
+ */
+export const BEAM_GAUGE_FRACTIONS=[.2,.275,.35,.425] as const;
 
 /**
  * A graded background resolves propagation, rather than refining only the hull. Around the hull, a column of
@@ -397,10 +403,21 @@ export function extendCaseWithWaves(base:CfdCasePackage,settings:WaveCaseSetting
   // Runtime loading is explicit; no custom unverified dynamic C++ boundary is generated.
   // exprField mixes metres and plain numbers; OpenFOAM's dimension consistency check is switched off for this case only.
   control=control.replace(/(^|\n)functions\s*\{/,`\nDebugSwitches\n{\n    dimensionSet 0;\n}\nfunctions\n{\n    readReferenceFields\n    {\n        type readFields; libs ("libfieldFunctionObjects.so");\n        fields (UZero UWave);\n    }\n    waveTarget\n    {\n        type exprField; libs ("libfieldFunctionObjects.so");\n        field UWave;\n        action modify;\n        autowrite false;\n        executeControl timeStep; writeControl none;\n        expression "${waveTargetExpression}";\n    }`);
-  const probeDistance=Math.min(wavelength/4,distance/3),cg=b.load.solverCgM;
-  const probeA:Vec3=moving?[cg[0],cg[1]-probeDistance,0]:[cg[0]+probeDistance,cg[1],0];
-  const probeB:Vec3=moving?[cg[0],cg[1]-2*probeDistance,0]:[cg[0]+2*probeDistance,cg[1],0];
-  control=appendFunction(control,`    waveGauges\n    {\n        type interfaceHeight; libs ("libfieldFunctionObjects.so");\n        alpha alpha.water;\n        locations (${v(probeA)} ${v(probeB)});\n        direction (0 0 1);\n        writeControl timeStep; writeInterval 1;\n    }`);
+  const cg=b.load.solverCgM;
+  let probes:Vec3[];
+  if(moving){
+    // Beam waves: gauges stand in the open water between the generation zone and the hull's up-wave SIDE (not its
+    // centre), at BEAM_GAUGE_FRACTIONS wavelengths from it. Measured from the centre (the old layout), a wide hull put
+    // the near gauge inside its own footprint: the reading was meaningless and, on a 208 mm SWATH at 350 g, the gauge
+    // line through the moving hull hung interFoam at the same step in three runs (Roihu, 2026-11-18). Several gauges
+    // let the incident wave be separated from the hull's reflected/radiated wave (result-reader analyseWaveGauges).
+    const side=b.geometry.minM[1],gapUp=side-b.domain.minM[1];
+    probes=BEAM_GAUGE_FRACTIONS.map(f=>[cg[0],side-Math.min(f*wavelength,.9*gapUp),0] as Vec3);
+  }else{
+    const probeDistance=Math.min(wavelength/4,distance/3);
+    probes=[[cg[0]+probeDistance,cg[1],0],[cg[0]+2*probeDistance,cg[1],0]];
+  }
+  control=appendFunction(control,`    waveGauges\n    {\n        type interfaceHeight; libs ("libfieldFunctionObjects.so");\n        alpha alpha.water;\n        locations (${probes.map(v).join(' ')});\n        direction (0 0 1);\n        writeControl timeStep; writeInterval 1;\n    }`);
   if(moving){
     const L=b.geometry.maxM[0]-b.geometry.minM[0];
     // The morphing zone must end inside the tank. With outerDistance 0.75 L it crossed the end walls (0.5 L from bow and

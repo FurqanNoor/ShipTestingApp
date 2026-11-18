@@ -31,6 +31,20 @@ test('wave gauges recover a sine wave height and period and flag a damped wave',
   assert.equal(onlyFull.withinTolerance,true);
 });
 
+test('beam-wave gauges separate the incoming wave from the hull reflection',()=>{
+  // 10 mm incident wave plus a 40% reflection: single gauges read anywhere between 6 and 14 mm.
+  const T=.45,L=.316,k=2*Math.PI/L,w=2*Math.PI/T,H=.01,ys=[-.17,-.146,-.123,-.1],lines=[];
+  for(let i=0;i<=5000;i++){const t=i*.002;lines.push(`${t} `+ys.map(y=>`( 0.1 ${y} ${H/2*Math.cos(k*y-w*t)+.4*H/2*Math.cos(-k*y-w*t+.7)} )`).join(' '));}
+  const r=analyseWaveGauges(lines.join('\n'),{startS:3,endS:10,targetHeightM:H,targetPeriodS:T,wavelengthM:L,direction:[0,1,0]});
+  assert.equal(r.heightMethod,'incident (multi-gauge separation)');
+  assert.ok(Math.abs(r.heightRatio-1)<.005,String(r.heightRatio));assert.ok(Math.abs(r.reflectionCoefficient-.4)<.005);
+  assert.equal(r.withinTolerance,true);assert.ok(Math.abs(r.localHeightM/H-1)>.1,'the plain gauge mean is biased');
+  // Gauges half a wavelength apart cannot separate the two waves: fall back to the plain mean.
+  const pair=[];for(let i=0;i<=5000;i++){const t=i*.002;pair.push(`${t} `+[-.2,-.2+L/2].map(y=>`( 0.1 ${y} ${H/2*Math.cos(k*y-w*t)} )`).join(' '));}
+  const half=analyseWaveGauges(pair.join('\n'),{startS:3,endS:10,targetHeightM:H,targetPeriodS:T,wavelengthM:L,direction:[0,1,0]});
+  assert.equal(half.heightMethod,'mean of gauges');assert.equal(half.reflectionCoefficient,null);
+});
+
 test('estimator reproduces the measured quick calm run and learns from finished runs',()=>{
   const manifest={condition:{kind:'calm'},mesh:{fidelity:'quick',estimatedBaseCells:107712,finestCellM:.003125},numerics:{durationS:4,maxDeltaTS:.004}};
   const p=predictRun(manifest,{cores:4});
