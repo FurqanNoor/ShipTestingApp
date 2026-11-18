@@ -23,16 +23,36 @@ export const DEFAULTS={
 export const REFERENCE_COURANT={calm:.8,waves:1};
 const KEYS=['secondsPerCellStep','dtPerFinestCellPerCo','cellGrowth','meshSecondsPerCell'];
 const refCo=key=>REFERENCE_COURANT[key.split(':')[0]]??1;
+const defaultsFor=key=>DEFAULTS[key.split(':').slice(0,2).join(':')];
 const finite=v=>typeof v==='number'&&Number.isFinite(v)&&v>0;
 
+/**
+ * Mesh cells relative to the coarse grid of the same hull: each level halves the near-hull cell (snappyHexMesh surface
+ * level +1). Measured medium/coarse 1.78 (220 mm SWATH calm, Roihu). Fine is an estimate until a fine run calibrates it.
+ */
+export const LEVEL_GROWTH={coarse:1,medium:1.8,fine:4.5};
+/** Calibration key: test type, fidelity and mesh level (cell growth differs per level; it used to be shared). */
 export function runKey(manifest){
   const mode=manifest?.condition?.kind==='calm'||!manifest?.condition?.kind?'calm':'waves';
-  return `${mode}:${manifest?.mesh?.fidelity==='quick'?'quick':'standard'}`;
+  const level=['medium','fine'].includes(manifest?.mesh?.level)?manifest.mesh.level:'coarse';
+  return `${mode}:${manifest?.mesh?.fidelity==='quick'?'quick':'standard'}:${level}${manifest?.numerics?.steady?':steady':''}`;
 }
+const baseKey=key=>key.split(':').slice(0,2).join(':');
+const levelOf=key=>key.split(':')[2]??'coarse';
+const levelKey=key=>key.split(':').slice(0,3).join(':');
 
 /** Calibrated parameters for one run type; falls back to defaults scaled by this machine's measured speed. */
 export function parameters(key,calibration={}){
-  const base={...(DEFAULTS[key]??DEFAULTS['calm:standard'])},own=calibration.entries?.[key];
+  const level=levelOf(key),growth=LEVEL_GROWTH[level]??1,entries=calibration.entries??{};
+  const base={...(DEFAULTS[baseKey(key)]??DEFAULTS['calm:standard'])};base.cellGrowth*=growth;
+  // This level's own calibration; otherwise the coarse one (or the older shared one) with the level's cell growth.
+  let own=entries[key];
+  if(!own){
+    // A steady run first borrows the transient calibration of its own mesh level (same mesh, so same cell growth).
+    const same=levelKey(key)!==key?entries[levelKey(key)]:undefined;
+    const fb=same??entries[`${baseKey(key)}:coarse`]??entries[baseKey(key)];
+    if(fb)own={...fb,...(!same&&finite(fb.cellGrowth)?{cellGrowth:fb.cellGrowth*growth}:{}),samples:0};
+  }
   const speed=finite(calibration.machineSpeedFactor)?calibration.machineSpeedFactor:1;
   const out={...base,dtPerFinestCellPerCo:base.dtPerFinestCell/refCo(key),secondsPerCellStep:base.secondsPerCellStep*speed,calibrated:false,samples:0};
   // Older calibrations stored the step per finest cell at the reference Courant limit.
@@ -50,7 +70,8 @@ export function predictRun(manifest,{cores=1,calibration,saturation}={}){
   const dtCap=finite(n.maxDeltaTS)?n.maxDeltaTS:.001;
   const co=finite(n.maxCo)?n.maxCo:refCo(key);
   const dt=Math.max(1e-7,Math.min(dtCap,p.dtPerFinestCellPerCo*co*(finite(mesh.finestCellM)?mesh.finestCellM:.003)));
-  const steps=(finite(n.durationS)?n.durationS:1)/dt;
+  // Steady (local time stepping): durationS counts iterations.
+  const steps=n.steady?(finite(n.durationS)?n.durationS:1):(finite(n.durationS)?n.durationS:1)/dt;
   const solveS=steps*cells*p.secondsPerCellStep/parallelSpeedup(cores,saturation);
   const meshS=cells*p.meshSecondsPerCell;
   return {key,cells:Math.round(cells),steps:Math.round(steps),meshS,solveS,totalS:meshS+solveS,calibrated:p.calibrated};
@@ -63,7 +84,7 @@ export function learn(calibration={},sample){
   const key=runKey(manifest),mesh=manifest.mesh??{},n=manifest.numerics??{};
   const measured={
     secondsPerCellStep:solveWallS*parallelSpeedup(cores,saturation)/(steps*actualCells),
-    dtPerFinestCellPerCo:finite(n.durationS)&&finite(mesh.finestCellM)?n.durationS/steps/mesh.finestCellM/(finite(n.maxCo)?n.maxCo:refCo(key)):undefined,
+    dtPerFinestCellPerCo:!n.steady&&finite(n.durationS)&&finite(mesh.finestCellM)?n.durationS/steps/mesh.finestCellM/(finite(n.maxCo)?n.maxCo:refCo(key)):undefined,
     cellGrowth:finite(mesh.estimatedBaseCells)?actualCells/mesh.estimatedBaseCells:undefined,
     meshSecondsPerCell:finite(meshWallS)?meshWallS/actualCells:undefined,
   };
@@ -73,7 +94,7 @@ export function learn(calibration={},sample){
   const w=prev.samples?.5:1;
   for(const k of KEYS){const m=measured[k],old=prev[k];next[k]=finite(m)?(finite(old)?old*(1-w)+m*w:m):old;}
   entries[key]=next;
-  const ratios=Object.entries(entries).filter(([k,e])=>DEFAULTS[k]&&finite(e.secondsPerCellStep)).map(([k,e])=>e.secondsPerCellStep/DEFAULTS[k].secondsPerCellStep);
+  const ratios=Object.entries(entries).filter(([k,e])=>defaultsFor(k)&&finite(e.secondsPerCellStep)).map(([k,e])=>e.secondsPerCellStep/defaultsFor(k).secondsPerCellStep);
   const machineSpeedFactor=ratios.length?Math.exp(ratios.reduce((s,r)=>s+Math.log(r),0)/ratios.length):1;
   return {schema:1,updatedAt:new Date().toISOString(),machineSpeedFactor,entries};
 }

@@ -40,6 +40,8 @@ let nextId = 1;
 let shown = "";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+/** Escaped text with line-break points after underscores (file names like 02_Wide_Flat_Bottom_Scow have no spaces). */
+const breakable = (s: string) => esc(s).replace(/_/g, "_<wbr>");
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const f = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : "-");
 const current = () => state.models.find((m) => m.id === state.sel) ?? null;
@@ -239,7 +241,7 @@ function cfdBoardInner(): string {
   const tag = (r: (typeof rows)[number]) => r.status === "ranked" ? (r.failures ? `<small style="color:var(--bad)">${r.failures} failed test${r.failures > 1 ? "s" : ""}</small>` : "") : `<small style="color:var(--warn, #c90)">${r.status === "incomplete" ? "Not ranked yet" : "Different settings"}</small>`;
   return `<h2>OpenFOAM ranking <span>CFD solver results</span></h2><div class="tablewrap"><table>
     <thead><tr><th>#</th><th style="text-align:left">Hull</th><th>Calm drag<br>mN</th><th>Max roll<br>deg</th><th>GM<br>mm</th><th>Score</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}" title="${esc(r.note || r.settingsLabel)}"><td><span class="place">${r.place ?? "—"}</span></td><td style="text-align:left;white-space:normal">${esc(r.name)}${tag(r)}</td>
+    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}" title="${esc(r.note || r.settingsLabel)}"><td><span class="place">${r.place ?? "—"}</span></td><td style="text-align:left;white-space:normal">${breakable(r.name)}${tag(r)}</td>
       ${cell(n(r.dragMN, 2), r.scoreDrag)}${cell(n(r.rollDeg), r.scoreRoll)}${cell(n(r.gmMm), r.scoreStability)}<td class="num">${n(r.total, 0)}</td></tr>`).join("")}
     </tbody></table></div><p class="note">Score = average of drag, roll and stability (one third each). Best in each category = 100 points, the rest in proportion; a hull that sinks or capsizes ranks below all hulls without failures. ${reference ? `Compared at: ${esc(reference.speed === "quick" ? "Quick" : "Full")} · ${reference.cores ?? "?"} cores · setup ${esc(reference.protocol)}.` : ""} Hover a row for details.</p>`;
 }
@@ -268,7 +270,7 @@ function leaderboardHtml(): string {
   const cell = (value: string, score: number) => `<td>${value}<small>${f(score, 0)} pts</small></td>`;
   return `<div class="sec"><h2>Instant estimate ranking <span>quick preview · not CFD</span></h2><div class="tablewrap"><table>
     <thead><tr><th>#</th><th style="text-align:left">Model</th><th>Avg drag<br>mN</th><th>Avg max<br>roll</th><th>Max load<br>g</th><th>Score</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}"><td><span class="place">${r.place || "—"}</span></td><td style="text-align:left;white-space:normal">${esc(r.name)}${r.failures ? `<small style="color:var(--bad)">${r.failures} failed case${r.failures > 1 ? "s" : ""}</small>` : ""}</td>
+    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}"><td><span class="place">${r.place || "—"}</span></td><td style="text-align:left;white-space:normal">${breakable(r.name)}${r.failures ? `<small style="color:var(--bad)">${r.failures} failed case${r.failures > 1 ? "s" : ""}</small>` : ""}</td>
       ${cell(f(r.dragMN, 2), r.scoreDrag)}${cell(Number.isFinite(r.rollDeg) ? `${f(r.rollDeg)}&deg;` : "-", r.scoreRoll)}${cell(f(r.maxLoadG, 0), r.scoreLoad)}<td class="num">${f(r.total, 0)}</td></tr>`).join("")}
     </tbody></table></div><p class="note">${rows.length > 1 ? "Best in each category scores 100 points, the rest in proportion. Score is the average of drag, roll and max load." : "Add more STL files to rank designs against each other."}</p></div>`;
 }

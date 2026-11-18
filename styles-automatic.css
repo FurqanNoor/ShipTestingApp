@@ -15,3 +15,21 @@
 .auto-rank-table .auto-rank-bad { color: var(--bad, #c0392b); opacity: 1; }
 .auto-rank-table tr.auto-rank-first td { font-weight: 600; }
 .auto-runs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.auto-run-chip{font-size:9px;line-height:1.5;padding:1px 6px;border-radius:9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}.auto-run-chip.done{color:var(--ok);border-color:var(--ok)}.auto-run-chip.bad{color:var(--bad);border-color:var(--bad)}.auto-run-chip.live{color:var(--accent);border-color:var(--accent)}.auto-run-chip.wait{border-style:dashed}
+/* Dialog tables: undo the main page's global table rules (right-aligned cells, bottom-aligned headings, top borders). */
+.automatic-dialog th,.automatic-dialog td{vertical-align:middle}
+.auto-grid tbody th{vertical-align:middle;padding-left:12px}
+.auto-grid thead th:first-child{text-align:left;padding-left:12px}
+.auto-rank-table{border-collapse:collapse;width:100%;font-size:11px}
+.auto-rank-table th,.auto-rank-table td{padding:9px 12px;border-top:0;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap;text-align:right}
+.auto-rank-table thead th{background:var(--surface-2);font-size:10px;font-weight:500;color:var(--muted);vertical-align:bottom;line-height:1.4}
+.auto-rank-table th:first-child,.auto-rank-table td:first-child{text-align:center;width:28px}
+.auto-rank-table th:nth-child(2),.auto-rank-table td:nth-child(2){text-align:left;white-space:normal;width:100%;word-break:break-word}
+.auto-rank-table td small{display:block;font-size:9px;margin-top:3px;font-weight:400}
+.auto-rank-table tr:last-child td{border-bottom:0}
+.auto-queue-table:not(.auto-rank-table) td{border-top:0;text-align:left}
+.auto-queue-table td.auto-queue-actions{text-align:right}
+/* Study results: numbers right-aligned under right-aligned headings; test name and review left. */
+.auto-results th,.auto-results td{text-align:right;border-top:0}
+.auto-results th:first-child,.auto-results td:first-child,.auto-results th:last-child,.auto-results td:last-child{text-align:left}
+.auto-results td small{display:inline}
+.auto-results td:first-child small{display:block}

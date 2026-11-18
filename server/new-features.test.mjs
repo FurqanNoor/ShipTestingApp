@@ -104,3 +104,14 @@ test('a runaway hull motion is explained as a numerical coupling failure, not a 
   assert.equal(explainFailure('OpenFOAM stopped','    Angular velocity: (5.42715812e+96 0 1.046094366e+94)\nFloating point exception').title,'Hull motion became numerically unstable');
   assert.equal(explainFailure('OpenFOAM stopped','    Angular velocity: (0.68 0 -0.0002)\nFloating point exception').title,'Solver became unstable');
 });
+
+test('time estimates keep coarse, medium and fine meshes apart',()=>{
+  const m=level=>({condition:{kind:'calm'},mesh:{fidelity:'quick',level,estimatedBaseCells:118272,finestCellM:.0034/(level==='fine'?4:level==='medium'?2:1)},numerics:{durationS:29,maxDeltaTS:.002,maxCo:.4}});
+  const c=predictRun(m('coarse'),{cores:64}),md=predictRun(m('medium'),{cores:64}),f=predictRun(m('fine'),{cores:64});
+  assert.ok(md.cells>1.5*c.cells&&f.cells>2*md.cells,`${c.cells} ${md.cells} ${f.cells}`);
+  assert.ok(f.totalS>4*md.totalS);
+  // Learning from a medium run calibrates medium only; coarse predictions are unchanged.
+  const cal=learn({},{manifest:m('medium'),actualCells:320000,steps:40000,solveWallS:7000,meshWallS:300,cores:64});
+  assert.equal(predictRun(m('coarse'),{cores:64,calibration:cal}).cells,c.cells);
+  assert.equal(predictRun(m('medium'),{cores:64,calibration:cal}).cells,320000);
+});

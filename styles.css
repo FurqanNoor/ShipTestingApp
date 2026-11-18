@@ -209,3 +209,4 @@ dl.cond dd small { display: block; color: var(--muted); font-size: 11.5px; }
 /* Leaderboards: instant estimate and OpenFOAM side by side when the panel is wide enough, stacked otherwise. */
 .boards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
 .boards > .sec { min-width: 0; }
+@media (min-width: 1500px) { .boards { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); } }
