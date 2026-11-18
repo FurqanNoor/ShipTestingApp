@@ -347,7 +347,11 @@ async function enqueueCase(body,context={}){
   if(context.isCancelled?.())return {id:null,status:'cancelled',result:null,error:null};
   if(context.reuse&&context.studyId){
     const hit=await reusableJob(prepared,id).catch(()=>null);
-    if(hit)return {id:hit.id,status:'completed',result:hit.result,error:null,hint:null,reused:true};
+    if(hit){
+      // Score the reused run with the current result reader (acceptance rules may have changed since it finished).
+      try{hit.result=await readCfdRunResult(hit.dir,{manifest:hit.manifest,hydro:hit.hydro,geometryHash:hit.geometryHash,protocolHash:hit.protocolHash,...core});await save(hit);}catch{/* keep the stored result */}
+      return {id:hit.id,status:'completed',result:hit.result,error:null,hint:null,reused:true};
+    }
   }
   const dir=resolve(RUNS,id);await writePackage(dir,prepared.package.files);
   const {trianglesMm,...summary}=prepared.request;void trianglesMm;

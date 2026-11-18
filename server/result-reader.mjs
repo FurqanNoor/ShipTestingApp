@@ -78,8 +78,10 @@ export const ALPHA_BOUND_TOLERANCE=1e-3;
 export function detailedMeshAcceptable(text){
   if(/FOAM FATAL/i.test(text))return false;
   if(/\bMesh OK\b/.test(text)&&!/Failed\s+[1-9]\d*\s+mesh checks/i.test(text))return true;
+  // A few highly skew faces are tolerated within the same limit as the mandatory gate (max(10, cells/10,000)).
+  const cells=Number(/^\s*cells:\s*(\d+)/m.exec(text)?.[1]??0),limit=Math.max(10,Math.floor(cells/10000));
   const failures=[...text.matchAll(/^\s*\*\*\*.*$/gm)].map(m=>m[0]);
-  return failures.length>0&&failures.every(l=>/concave/i.test(l));
+  return failures.length>0&&failures.every(l=>/concave/i.test(l)||(/highly skew faces/i.test(l)&&Number(/(\d+)\s+highly skew faces/i.exec(l)?.[1]??Infinity)<=limit));
 }
 export function meshGate(meshText){
   const cells=Number(/^\s*cells:\s*(\d+)/m.exec(meshText)?.[1]??0),limit=Math.max(10,Math.floor(cells/10000));

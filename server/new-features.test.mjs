@@ -122,3 +122,8 @@ test('detailed mesh diagnostics accept snappyHexMesh concave cells but nothing e
   assert.equal(detailedMeshAcceptable(' ***Concave cells found\n ***Zero or negative cell volume detected.\nFailed 2 mesh checks.'),false);
   assert.equal(detailedMeshAcceptable('--> FOAM FATAL ERROR'),false);
 });
+
+test('detailed mesh diagnostics also accept a few highly skew faces within the mandatory gate limit',()=>{
+  const t=n=>`    cells:            200000\n ***Max skewness = 5.75, ${n} highly skew faces detected which may impair the quality of the results\n ***Concave cells (using face planes) found, number of cells: 3379\nFailed 2 mesh checks.`;
+  assert.equal(detailedMeshAcceptable(t(3)),true);assert.equal(detailedMeshAcceptable(t(25)),false);
+});

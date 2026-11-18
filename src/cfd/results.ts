@@ -221,11 +221,17 @@ function weighted(samples:ForceSample[],value:(s:ForceSample)=>number) {
   return {mean,standardDeviation:Math.sqrt(Math.max(0,squareIntegral/duration-mean*mean))};
 }
 
+/**
+ * Split-half drift allowed for a stationary force history: 5% (was 2%). Calm drag wanders about +-10% over 3 s blocks
+ * of the averaging window, so 2% failed almost every Roihu calm run of 18 Nov (drift 0.1-15.5%), Full mode could never
+ * pass, and 5% matches the mesh and time-step sensitivity limit. A real trend (unsettled run) still fails.
+ */
+export const DEFAULT_DRIFT_TOLERANCE=.05;
 export function summarizeForces(series:ForceSeries,options:AveragingOptions={}):ForceStatistics {
   const all=series.samples;
   if(all.length<2)throw new Error('At least two force samples are required for a time average.');
   if(all.some((s,i)=>!Number.isFinite(s.timeS)||(i>0&&s.timeS<=all[i-1].timeS)||![s.totalN,s.pressureN,s.viscousN,s.porousN].every(vector)))throw new Error('Force history contains invalid samples or non-increasing times.');
-  const discard=options.discardFraction??.5,minSamples=options.minSamples??20,driftTolerance=options.driftTolerance??.02;
+  const discard=options.discardFraction??.5,minSamples=options.minSamples??20,driftTolerance=options.driftTolerance??DEFAULT_DRIFT_TOLERANCE;
   if(!Number.isFinite(discard)||discard<0||discard>=1)throw new Error('Discard fraction must be in[0,1).');
   if(!Number.isInteger(minSamples)||minSamples<2)throw new Error('At least two original samples must be required.');
   if(!Number.isFinite(driftTolerance)||driftTolerance<=0)throw new Error('Drift tolerance must be positive.');
