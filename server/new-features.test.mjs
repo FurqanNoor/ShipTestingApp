@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {scanFullLog,analyseWaveGauges} from './result-reader.mjs';
+import {scanFullLog,analyseWaveGauges,detailedMeshAcceptable} from './result-reader.mjs';
 import {predictRun,learn,remainingStudySeconds,DEFAULTS,PARALLEL_EXPONENT} from './estimator.mjs';
 import {explainFailure} from './failure-hints.mjs';
 
@@ -114,4 +114,11 @@ test('time estimates keep coarse, medium and fine meshes apart',()=>{
   const cal=learn({},{manifest:m('medium'),actualCells:320000,steps:40000,solveWallS:7000,meshWallS:300,cores:64});
   assert.equal(predictRun(m('coarse'),{cores:64,calibration:cal}).cells,c.cells);
   assert.equal(predictRun(m('medium'),{cores:64,calibration:cal}).cells,320000);
+});
+
+test('detailed mesh diagnostics accept snappyHexMesh concave cells but nothing else',()=>{
+  assert.equal(detailedMeshAcceptable('Mesh OK.\nEnd'),true);
+  assert.equal(detailedMeshAcceptable(' ***Concave cells (using face planes) found, number of cells: 2107\nFailed 1 mesh checks.'),true);
+  assert.equal(detailedMeshAcceptable(' ***Concave cells found\n ***Zero or negative cell volume detected.\nFailed 2 mesh checks.'),false);
+  assert.equal(detailedMeshAcceptable('--> FOAM FATAL ERROR'),false);
 });
