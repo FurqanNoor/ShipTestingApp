@@ -129,8 +129,8 @@ export const MAX_QUEUED_STUDIES=100;
  * It never retries or resumes work silently.
  */
 export class StudyRunner {
-  constructor({runCase,cancelCase,persist=async()=>{},now=()=>new Date().toISOString(),slots=()=>({studies:1,runs:1}),resumeJob=()=>null}){
-    this.resumeJob=resumeJob;this.runCase=runCase;this.cancelCase=cancelCase;this.persist=persist;this.now=now;this.slots=slots;this.records=new Map();this.activeIds=new Set();this.waiting=[];
+  constructor({runCase,cancelCase,persist=async()=>{},now=()=>new Date().toISOString(),slots=()=>({studies:1,runs:1}),resumeJob=()=>null,loadPlan=async()=>null}){
+    this.resumeJob=resumeJob;this.loadPlan=loadPlan;this.runCase=runCase;this.cancelCase=cancelCase;this.persist=persist;this.now=now;this.slots=slots;this.records=new Map();this.activeIds=new Set();this.waiting=[];
   }
   /** First running study (kept for callers that show one active study). */
   get activeId(){return this.activeIds.values().next().value??null;}
@@ -145,22 +145,21 @@ export class StudyRunner {
   async restore(record){
     if(!record||record.schema!==1||typeof record.id!=='string'||!Array.isArray(record.conditions))return;
     const study=copy(record);
-    // A Quick cluster study whose jobs are still running on the cluster continues: it waits again for those jobs.
-    // Tests that had not been submitted yet are marked interrupted (re-run them); nothing is resubmitted silently.
-    if(study.status==='running'&&study.options?.backend==='cluster'&&study.options?.speed==='quick'){
-      const waits=[],ids=[];
-      for(const c of study.conditions){
-        if(!['pending','running'].includes(c.status))continue;
-        const run=[...c.runs].reverse().find(r=>r.jobId&&!TERMINAL.has(r.status));
-        const done=run&&this.resumeJob(run.jobId);
-        if(done){ids.push(run.jobId);waits.push(done.then(job=>{this.applyJob(study,c,run,job);this.finishCondition(study,c);study.activeJobIds=(study.activeJobIds??[]).filter(id=>id!==run.jobId);return this.save(study);}));}
-        else{c.status='interrupted';c.stage='Not submitted before the restart: re-run it';for(const r of c.runs)if(!TERMINAL.has(r.status))r.status='interrupted';}
-      }
-      if(waits.length){
-        study.stage='Re-attached to cluster jobs after a restart';study.activeJobIds=ids;this.records.set(study.id,study);this.activeIds.add(study.id);await this.save(study);
-        this.running=Promise.all(waits).then(()=>{
+    // A cluster study continues after a restart: it waits again for its submitted jobs (they kept running on the
+    // cluster) and submits the checks that had not started yet, from the same stored geometry. Without that geometry
+    // the unsubmitted checks are marked interrupted (re-run them); nothing finished is ever replayed.
+    if(study.status==='running'&&study.options?.backend==='cluster'){
+      const open=study.conditions.filter(c=>['pending','running'].includes(c.status));
+      const watched=open.some(c=>c.runs.some(r=>r.jobId&&!TERMINAL.has(r.status)&&this.resumeJob(r.jobId)));
+      if(watched){
+        let planned=null;try{planned=await this.loadPlan(study);}catch{planned=null;}
+        study.stage='Re-attached to cluster jobs after a restart';study.activeJobIds=[];study.activeJobId=null;
+        this.records.set(study.id,study);this.activeIds.add(study.id);await this.save(study);
+        const speed=study.options?.speed??'full';
+        this.running=Promise.all(open.map(c=>{c.status='running';return this.runClusterCondition(study,c,planned?.get(c.id)??null,speed);})).then(()=>{
+          if(study.status==='cancelled')return;
           const unfinished=study.conditions.some(c=>c.status==='interrupted');
-          if(study.status!=='cancelled'){study.status=unfinished?'interrupted':'completed';study.stage=unfinished?'Some tests were not submitted before a restart: re-run them':'Automatic tests finished — review numerical sensitivity and assumptions';}
+          study.status=unfinished?'interrupted':'completed';study.stage=unfinished?'Some tests could not continue after a restart: re-run them':'Automatic tests finished — review numerical sensitivity and assumptions';
         }).catch(error=>{study.status='failed';study.stage='Automatic study stopped';study.error=String(error.message??error);})
           .finally(async()=>{study.activeJobId=null;study.activeJobIds=[];await this.save(study);this.activeIds.delete(study.id);this.next();});
         return;
@@ -227,10 +226,43 @@ export class StudyRunner {
   }
   finishCondition(study,condition){
     condition.result=assessCondition(condition);
+    if(study.status!=='cancelled'&&condition.status!=='blocked'&&condition.runs.some(r=>r.status==='interrupted')){
+      condition.status='interrupted';condition.stage='Not every run could continue after a restart: re-run this test';return;
+    }
     if(study.status!=='cancelled'&&condition.status!=='blocked'){
       condition.status=condition.runs.some(r=>getResult(r))?'completed':'failed';
       condition.stage=condition.result.quick?(condition.status==='completed'?'Quick run finished — rough numbers, no sensitivity checks':'Quick run failed — see the log'):condition.result.numericalSensitivityPassed?'Sensitivity checks passed; physical validation pending':'Finished with inconclusive numerical sensitivity';
     }
+  }
+  /**
+   * Cluster: the coarse run first (it also preflights the condition), then every other phase at once. Phases that
+   * already have a job (after a restart) are waited for instead of submitted again. planned=null: unsubmitted phases
+   * cannot be prepared and are marked interrupted.
+   */
+  async runClusterCondition(study,condition,planned,speed){
+    const phases=phasesFor(speed);
+    const ensure=async phase=>{
+      const existing=condition.runs.find(r=>r.phase===phase);
+      if(existing&&TERMINAL.has(existing.status))return existing.status!=='blocked';
+      if(existing?.jobId){
+        const done=this.resumeJob(existing.jobId);
+        if(!done){existing.status='interrupted';existing.error='The app restarted and this run could not be re-attached.';return true;}
+        if(!(study.activeJobIds??=[]).includes(existing.jobId))study.activeJobIds.push(existing.jobId);
+        const job=await done;this.applyJob(study,condition,existing,job);
+        study.activeJobIds=study.activeJobIds.filter(id=>id!==existing.jobId);await this.save(study);return true;
+      }
+      if(existing)condition.runs.splice(condition.runs.indexOf(existing),1); // prepared but never submitted
+      if(study.status==='cancelled')return false;
+      if(!planned){condition.runs.push({phase,status:'interrupted',error:'Not submitted before the app restarted.'});return true;}
+      return this.runPhase(study,condition,planned,phase,speed);
+    };
+    if(!(await ensure(phases[0]))){this.finishCondition(study,condition);await this.save(study);return;}
+    // Time-step and domain checks compare against the coarse result: without one they are skipped (as in the
+    // sequential path) instead of spending cluster time on runs that cannot be assessed.
+    const hasCoarse=!!getResult(condition.runs.find(r=>r.phase==='coarse'));
+    for(const phase of phases.slice(1))if(!hasCoarse&&['time-step','domain'].includes(phase)&&!condition.runs.some(r=>r.phase===phase))condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});
+    await Promise.all(phases.slice(1).filter(phase=>hasCoarse||!['time-step','domain'].includes(phase)).map(ensure));
+    this.finishCondition(study,condition);await this.save(study);
   }
   async execute(study,plan){
     try{
@@ -242,16 +274,7 @@ export class StudyRunner {
         const conditions=plan.conditions.map((planned,index)=>({planned,condition:study.conditions[index]}));
         for(const {condition} of conditions){condition.status='running';condition.stage='Submitting';}
         await this.save(study);
-        await Promise.all(conditions.map(async({planned,condition})=>{
-          const phases=phasesFor(speed);
-          if(!(await this.runPhase(study,condition,planned,phases[0],speed))){this.finishCondition(study,condition);return;}
-          // Time-step and domain checks compare against the coarse result: without one they are skipped (as in the
-          // sequential path) instead of spending cluster time on runs that cannot be assessed.
-          const hasCoarse=!!getResult(condition.runs.find(r=>r.phase==='coarse'));
-          for(const phase of phases.slice(1))if(!hasCoarse&&['time-step','domain'].includes(phase))condition.runs.push({phase,status:'skipped',error:'No genuine coarse reference run is available.'});
-          await Promise.all(phases.slice(1).filter(phase=>hasCoarse||!['time-step','domain'].includes(phase)).map(phase=>this.runPhase(study,condition,planned,phase,speed)));
-          this.finishCondition(study,condition);await this.save(study);
-        }));
+        await Promise.all(conditions.map(({planned,condition})=>this.runClusterCondition(study,condition,planned,speed)));
       }else{
         for(let index=0;index<plan.conditions.length;index++){
           if(study.status==='cancelled')break;

@@ -133,15 +133,31 @@ test('after a restart, a Quick cluster study re-attaches to its running jobs and
       cond('unsent','running',[{phase:'coarse',status:'preparing'}])]});
   let s=runner.get('s1');
   assert.equal(s.status,'running');assert.deepEqual(s.activeJobIds,['job-running']);assert.ok(runner.activeIds.has('s1'));
-  assert.equal(s.conditions[2].status,'interrupted');
   release({id:'job-running',status:'completed',result:solverResult('coarse'),error:null});
   await runner.running;
   s=runner.get('s1');
+  assert.equal(s.conditions[2].status,'interrupted','without stored geometry an unsent test is not resubmitted');
   assert.equal(s.conditions[1].status,'completed');assert.equal(s.conditions[1].result.quick,true);
   assert.equal(s.status,'interrupted','an unsent test leaves the study re-runnable');assert.ok(!runner.activeIds.has('s1'));
 });
-test('a restored local or Full study is still marked interrupted, never resumed',async()=>{
-  const runner=new StudyRunner({runCase:async()=>{},cancelCase:async()=>{},resumeJob:()=>Promise.resolve({})});
-  await runner.restore({schema:1,id:'s2',name:'Hull',status:'running',options:{speed:'full',backend:'cluster',cores:64},progress:{},conditions:[{id:'a',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
-  assert.equal(runner.get('s2').status,'interrupted');
+test('after a restart, a Full cluster study waits for its running coarse job, then submits the remaining checks',async()=>{
+  const calls=[];let release;
+  const runner=new StudyRunner({runCase:successfulCase(calls),cancelCase:async()=>{},
+    resumeJob:id=>id==='j'?new Promise(r=>{release=r;}):null,
+    loadPlan:async()=>new Map(plan(1).conditions.map(c=>[c.id,c]))});
+  await runner.restore({schema:1,id:'s2',name:'Hull',status:'running',options:{speed:'full',backend:'cluster',cores:64},progress:{conditionsTotal:1,solvesMaximum:5},
+    conditions:[{id:'condition-0',label:'c0',mode:'calm',speed:'full',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
+  assert.equal(runner.get('s2').status,'running');assert.equal(calls.length,0,'nothing is submitted before the coarse result');
+  release({id:'j',status:'completed',result:solverResult('coarse'),error:null});
+  await runner.running;
+  const s=runner.get('s2');
+  assert.deepEqual(calls.map(c=>c.context.phase).sort(),['domain','fine','medium','time-step']);
+  assert.equal(s.status,'completed');assert.equal(s.conditions[0].runs.length,5);assert.equal(s.conditions[0].runs.filter(r=>r.phase==='coarse').length,1);
+});
+test('a restored local study, or a cluster study with no watched job, is marked interrupted, never resumed',async()=>{
+  const runner=new StudyRunner({runCase:async()=>{},cancelCase:async()=>{},resumeJob:()=>null});
+  await runner.restore({schema:1,id:'s3',name:'Hull',status:'running',options:{speed:'full',backend:'cluster',cores:64},progress:{},conditions:[{id:'a',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
+  assert.equal(runner.get('s3').status,'interrupted');
+  await runner.restore({schema:1,id:'s4',name:'Hull',status:'running',options:{speed:'full',cores:8},progress:{},conditions:[{id:'a',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
+  assert.equal(runner.get('s4').status,'interrupted');
 });

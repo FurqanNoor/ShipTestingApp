@@ -65,6 +65,7 @@ async function persistStudy(record){
 const studyRunner=new StudyRunner({runCase:runStudyCase,cancelCase:async id=>{const j=jobs.get(id);if(j?.studyId)await cancel(j);},persist:persistStudy,
   slots:()=>clusterReady()?{studies:clusterConfig.concurrentStudies,runs:64}:{studies:1,runs:1},
   // After a restart, a study waits again for its re-attached cluster jobs (null: the job is not being watched).
+  loadPlan:async record=>{const tris=await loadGeometry(record.id,{exact:true});const plan=core.createAutomaticPlan({name:record.name,trianglesMm:tris});return new Map(plan.conditions.map(c=>[c.id,c]));},
   resumeJob:id=>{const j=jobs.get(id);if(!j)return null;if(['completed','failed','cancelled'].includes(j.status))return Promise.resolve(publicJob(j));if(!clusterJobs.has(id))return null;return new Promise(resolveJob=>jobWaiters.set(id,resolveJob));}});
 function publicStudy(record){
   if(!record)return null;
@@ -72,6 +73,20 @@ function publicStudy(record){
   const eta=queueTimes().get(record.id);if(eta)record.eta=eta;else if(TERMINAL_STUDY.has(record.status))record.eta={remainingS:0,finishAt:null};
   const queuePosition=studyRunner.queuedIds.indexOf(record.id);record.queuePosition=queuePosition>=0?queuePosition+1:null;
   if(j){record.activeJob={id:j.id,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logTail:j.log.slice(-15)};const condition=record.conditions.find(c=>c.id===j.conditionId);record.stage=`${condition?.label??'Automatic test'} · ${j.studyPhase}: ${j.stage}`;}
+  const pred=studyPredictions.get(record.id);let weightSum=0,doneSum=0;
+  for(const condition of record.conditions){
+    for(const run of condition.runs??[]){
+      const job=run.jobId&&jobs.get(run.jobId);
+      if(job)run.live={status:job.status,stage:job.stage,percent:Number.isFinite(job.progress?.percent)?job.progress.percent:0,etaS:Number.isFinite(job.progress?.etaS)?job.progress.etaS:null,slurmState:job.slurmState??null};
+    }
+    const planned=pred?.get(condition.id)?.runs?.filter(r=>!r.error)??phasesFor(record.options?.speed).map(phase=>({phase}));
+    for(const r of planned){
+      const weight=r.manifest?Math.max(1,predictS(r.manifest,record.options?.cores??defaultCores,record.options?.backend).totalS):1,run=condition.runs?.find(x=>x.phase===r.phase);
+      const fraction=DONE_CONDITION.has(condition.status)||(run&&DONE_CONDITION.has(run.status))?1:run?.live?(run.live.status==='completed'?1:run.live.percent/100):0;
+      weightSum+=weight;doneSum+=weight*fraction;
+    }
+  }
+  record.overall={percent:weightSum?100*doneSum/weightSum:0,weighted:!!pred};
   // Every running test shows its own job's live stage (on a cluster all of a study's tests run at once).
   for(const condition of record.conditions){
     if(condition.status!=='running')continue;
@@ -109,7 +124,6 @@ async function prepareEstimates(geomKey,condition,speed){
   const pending=(async()=>{
     const runs=[];let fine=null;
     for(const phase of phasesFor(speed)){
-      if(['time-step','domain'].includes(phase)&&!fine)break;
       await new Promise(r=>setImmediate(r)); // keep the service responsive between ~0.3 s preparations
       try{const p=await core.prepareCfdJob(numericalRequest(condition.request,phase,fine?{manifest:fine}:null,speed),'estimate');runs.push({phase,manifest:slimManifest(p.package.manifest)});if(phase==='fine')fine=p.package.manifest;}
       catch(e){const error=String(e?.message??e);runs.push({phase,error,hint:explainFailure(error)});break;}
@@ -128,22 +142,37 @@ function summariseCondition(condition,entry,cores,backend='local'){
   return {id:condition.id,label:condition.label,mode:condition.mode,blocked,error:blocked?first.error:null,hint:blocked?first.hint:null,
     laterPhaseError:!blocked&&entry.runs.find(r=>r.error)?.error||null,predictedS:backend==='cluster'?parallelS:runs.reduce((t,r)=>t+(r.predictedS??0),0),runs};
 }
+/**
+ * Remaining wall time of one cluster run. Before solving: the calibrated prediction minus time already spent. While
+ * solving: the live solver rate, blended with the prediction over the first 10% (start-up steps are unrepresentative).
+ */
+function runRemainingS(j,manifest){
+  const pred=predictS(manifest,0,'cluster');
+  if(j&&TERMINAL_JOB.has(j.status))return 0;
+  const p=j?.progress;
+  if(p?.step==='interFoam'&&Number.isFinite(p.etaS)){
+    const done=Math.max(0,Math.min(1,(p.percent??0)/100)),w=Math.min(1,done/.1);
+    return w*p.etaS+(1-w)*Math.max(0,pred.solveS*(1-done));
+  }
+  const elapsed=j?.timing?.runningAt?(Date.now()-j.timing.runningAt)/1000:0;
+  return Math.max(pred.totalS*.05,pred.totalS-elapsed);
+}
 /** Remaining time for one study, from calibrated predictions plus the live solver rate of the active run. */
 function studyRemaining(record){
   if(TERMINAL_STUDY.has(record.status))return {remainingS:0};
   const pred=studyPredictions.get(record.id);if(!pred)return null;
   if(record.options?.backend==='cluster'){
     // Parallel: each condition needs its unfinished coarse run, then the slowest unfinished other phase.
-    let worst=0;
+    let worst=0,slowest=null;
     for(const c of record.conditions){
       const entry=pred.get(c.id);if(!entry)return null;if(DONE_CONDITION.has(c.status))continue;
       const left=entry.runs.filter(r=>!r.error).map(r=>{const run=c.runs.find(x=>x.phase===r.phase),j=run?.jobId?jobs.get(run.jobId):null;
-        if(j&&TERMINAL_JOB.has(j.status))return 0;const predicted=predictS(r.manifest,0,'cluster').totalS;
-        if(j?.progress?.step==='interFoam'&&Number.isFinite(j.progress?.etaS))return j.progress.etaS;
-        const elapsed=j?.timing?.runningAt?(Date.now()-j.timing.runningAt)/1000:0;return Math.max(predicted*.05,predicted-elapsed);});
-      worst=Math.max(worst,(left[0]??0)+Math.max(0,...left.slice(1)));
+        if(run&&DONE_CONDITION.has(run.status))return 0;
+        return runRemainingS(j,r.manifest);});
+      const ok=entry.runs.filter(r=>!r.error),rest=left.slice(1),longest=Math.max(0,...rest),total=(left[0]??0)+longest;
+      if(total>worst){worst=total;slowest=`${c.label} · ${(longest>0?ok[1+rest.indexOf(longest)]:ok[0])?.phase??''}`;}
     }
-    return {remainingS:worst,activeRunS:worst,basedOnFinishedRuns:Object.keys(clusterCalibration.entries??{}).length>0};
+    return {remainingS:worst,activeRunS:worst,slowest,basedOnFinishedRuns:Object.keys(clusterCalibration.entries??{}).length>0};
   }
   const cores=record.options?.cores??defaultCores,pending=[],finished=[];let activeRun=null;
   for(const c of record.conditions){
@@ -167,7 +196,7 @@ function queueTimes(){
   for(const id of [...studyRunner.activeIds,...studyRunner.queuedIds]){
     const record=studyRunner.records.get(id);if(!record)continue;
     const r=studyRemaining(record);
-    if(record.options?.backend==='cluster'&&studyRunner.activeIds.has(id)){out.set(id,r?{remainingS:r.remainingS,startsInS:0,finishAt:new Date(now+r.remainingS*1000).toISOString(),parallel:true}:{remainingS:null,startsInS:0,finishAt:null,estimating:true});continue;}
+    if(record.options?.backend==='cluster'&&studyRunner.activeIds.has(id)){out.set(id,r?{remainingS:r.remainingS,startsInS:0,finishAt:new Date(now+r.remainingS*1000).toISOString(),parallel:true,slowest:r.slowest??null}:{remainingS:null,startsInS:0,finishAt:null,estimating:true});continue;}
     if(!r||!known){known=false;out.set(id,{remainingS:r?.remainingS??null,startsInS:id===studyRunner.activeId?0:null,finishAt:null,estimating:!r});continue;}
     out.set(id,{remainingS:r.remainingS,startsInS:offset,finishAt:new Date(now+(offset+r.remainingS)*1000).toISOString(),basedOnFinishedRuns:r.basedOnFinishedRuns});
     offset+=r.remainingS;
@@ -183,8 +212,21 @@ function queueSummary(){
 }
 async function saveCalibration(){try{await writeFile(CALIBRATION+'.tmp',JSON.stringify(calibration,null,2));await rename(CALIBRATION+'.tmp',CALIBRATION);}catch{/* estimates are optional */}}
 const geometryPath=id=>resolve(STUDIES,id+'.geometry.bin');
-async function saveGeometry(id,tris){await writeFile(geometryPath(id),Buffer.from(new Float32Array(tris).buffer));}
-async function loadGeometry(id){const b=await readFile(geometryPath(id));return Array.from(new Float32Array(b.buffer,b.byteOffset,b.byteLength/4));}
+const exactGeometryPath=id=>resolve(STUDIES,id+'.geometry64.bin');
+async function saveGeometry(id,tris){await writeFile(exactGeometryPath(id),Buffer.from(new Float64Array(tris).buffer));}
+/** exact=true: only the bit-exact float64 copy (needed to continue a study); otherwise falls back to older float32 files. */
+async function loadGeometry(id,{exact=false}={}){
+  try{const b=await readFile(exactGeometryPath(id));return Array.from(new Float64Array(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)));}
+  catch(error){if(exact)throw error;}
+  const b=await readFile(geometryPath(id));return Array.from(new Float32Array(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)));
+}
+/** Time predictions for a study (also rebuilt for studies re-attached after a restart). */
+async function ensurePredictions(record){
+  if(studyPredictions.has(record.id))return;
+  const tris=await loadGeometry(record.id),plan=core.createAutomaticPlan({name:record.name,trianglesMm:tris}),gk=geometryKey(tris),map=new Map();
+  for(const c of plan.conditions)if(record.conditions.some(x=>x.id===c.id))map.set(c.id,await prepareEstimates(gk,c,record.options?.speed??'full'));
+  studyPredictions.set(record.id,map);
+}
 function selectConditions(plan,ids){
   if(ids===undefined)return null;
   if(!Array.isArray(ids)||!ids.length)return 'Select at least one test condition.';
@@ -211,7 +253,7 @@ function track(j,line){
     const t=Number(m[1]);if(!Number.isFinite(t))return;
     if(j.status!=='solving'){j.status='solving';j.stage=STAGE_TEXT.interFoam;}
     p.solveStartedAt??=Date.now();p.simTimeS=t;p.stepCount=(p.stepCount??0)+1;const now=Date.now();p.elapsedS=(now-p.solveStartedAt)/1000;
-    p.samples.push([now,t]);while(p.samples.length>2&&now-p.samples[0][0]>120_000)p.samples.shift();
+    p.samples.push([now,t]);while(p.samples.length>2&&now-p.samples[0][0]>600_000)p.samples.shift();
     if(p.endTimeS>0){
       p.percent=Math.max(0,Math.min(100,100*t/p.endTimeS));
       const [w0,t0]=p.samples[0],rate=(t-t0)/((now-w0)/1000);
@@ -575,6 +617,7 @@ for(const entry of await readdir(STUDIES,{withFileTypes:true})){
   try{await studyRunner.restore(JSON.parse(await readFile(resolve(STUDIES,entry.name),'utf8')));}catch{/* Ignore incomplete study snapshots; never fabricate progress or resume execution. */}
 }
 if(clusterJobs.size)void pollCluster();
+for(const id of studyRunner.activeIds){const r=studyRunner.records.get(id);if(r)void ensurePredictions(r).catch(()=>{});}
 server.listen(PORT,HOST,()=>console.log(`Hull Test Bench + OpenFOAM: http://${HOST}:${PORT}\nJobs remain in ${RUNS}\nImage: ${IMAGE}\nResources: ${defaultCores} of ${maxCores} CPU cores by default (choose in the app), ${memory} RAM. CFD output remains unvalidated until convergence and physical testing.`));
 // Closing the app stops local work. Cluster jobs keep running on the cluster and are re-attached at the next start
 // (use Stop in the app to cancel them); studies still waiting in the queue are cancelled.

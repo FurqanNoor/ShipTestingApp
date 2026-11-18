@@ -14,3 +14,4 @@
 .auto-rank-table td small { display: block; opacity: .7; }
 .auto-rank-table .auto-rank-bad { color: var(--bad, #c0392b); opacity: 1; }
 .auto-rank-table tr.auto-rank-first td { font-weight: 600; }
+.auto-runs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.auto-run-chip{font-size:9px;line-height:1.5;padding:1px 6px;border-radius:9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}.auto-run-chip.done{color:var(--ok);border-color:var(--ok)}.auto-run-chip.bad{color:var(--bad);border-color:var(--bad)}.auto-run-chip.live{color:var(--accent);border-color:var(--accent)}.auto-run-chip.wait{border-style:dashed}
