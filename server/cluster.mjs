@@ -6,6 +6,7 @@
  * connection for all active jobs. Case folders travel as tar streams (tar ships with Windows 10+, macOS and Linux).
  */
 import {spawn} from 'node:child_process';
+import {Readable} from 'node:stream';
 import {readFile,writeFile,rename,mkdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {homedir} from 'node:os';
@@ -179,9 +180,13 @@ export const cancelRemoteByName=(c,names)=>{const ok=names.filter(n=>/^hull-[a-f
  */
 export async function poll(c,list){
   if(!list.length)return new Map();
+  // Log bytes per job per poll: at most 4 MB, and about 12 MB in total so one poll stays small with many jobs.
+  const chunk=Math.max(262144,Math.min(4194304,Math.floor(12582912/list.length)));
   const parts=list.map(j=>{const id=Number(j.slurmId),off=Math.max(0,Number(j.offset)||0);
-    return `echo "@@JOB ${id}"; s=$(squeue -h -j ${id} -o %T 2>/dev/null); [ -z "$s" ] && s=$(sacct -n -X -j ${id} -o State%20 2>/dev/null | head -1 | tr -d ' '); echo "@@STATE $s"; f='${j.remoteDir}/service-runner.log'; n=$(stat -c %s "$f" 2>/dev/null || echo 0); x=$(tail -c 400 "$f" 2>/dev/null | grep -ao 'HULL_EXIT [0-9]*' | tail -1); echo "@@EXIT $x"; echo "@@SIZE $n"; if [ "$n" -gt ${off} ]; then tail -c +${off+1} "$f" | head -c 4194304 | base64 -w0; fi; echo; echo "@@END"`;});
-  const out=await ssh(c,parts.join('; '),{timeoutMs:120_000});
+    return `echo "@@JOB ${id}"; s=$(squeue -h -j ${id} -o %T 2>/dev/null); [ -z "$s" ] && s=$(sacct -n -X -j ${id} -o State%20 2>/dev/null | head -1 | tr -d ' '); echo "@@STATE $s"; f='${j.remoteDir}/service-runner.log'; n=$(stat -c %s "$f" 2>/dev/null || echo 0); x=$(tail -c 400 "$f" 2>/dev/null | grep -ao 'HULL_EXIT [0-9]*' | tail -1); echo "@@EXIT $x"; echo "@@SIZE $n"; if [ "$n" -gt ${off} ]; then tail -c +${off+1} "$f" | head -c ${chunk} | base64 -w0; fi; echo; echo "@@END"`;});
+  // The script goes to bash on stdin: as one command-line argument it was cut off with ~24 jobs ("unexpected EOF").
+  const script=parts.join('\n')+'\n';
+  const out=await ssh(c,'bash -s',{stdin:()=>Readable.from([script]),timeoutMs:120_000});
   const map=new Map(),offsets=new Map(list.map(j=>[String(Number(j.slurmId)),Math.max(0,Number(j.offset)||0)]));
   for(const block of out.split('@@JOB ').slice(1)){
     const id=/^(\d+)/.exec(block)?.[1];if(!id)continue;

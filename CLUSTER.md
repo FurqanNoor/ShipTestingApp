@@ -43,7 +43,7 @@ The results are identical to a local run:
 1. Choose **Cluster (CSC Roihu)**.
 2. Tick the tests and press **Run tests**, or **Queue for all hulls**. The app uploads each case, submits it with `sbatch`, shows the live log and progress, and downloads the results when each job finishes.
 3. You can close the test window, but **keep the app (`npm run cfd`) running** until the tests finish, because it fetches the results.
-4. **Stop** cancels the cluster jobs (`scancel`). If the app is restarted while jobs are running, it cancels them so they don't use up your allocation. Re-run them afterwards.
+4. **Stop** cancels the cluster jobs (`scancel`). Closing or restarting the app does **not** cancel them: they keep running on the cluster, and the app re-attaches to them when it starts again and collects the results. Tests that had not been submitted yet when the app closed are marked interrupted; use **Re-run unfinished tests**.
 
 ## Time and allocation
 

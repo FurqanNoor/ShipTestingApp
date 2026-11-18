@@ -63,7 +63,9 @@ async function persistStudy(record){
 }
 // Locally one solve at a time; on the cluster every solve of several studies at once (each is its own Slurm job).
 const studyRunner=new StudyRunner({runCase:runStudyCase,cancelCase:async id=>{const j=jobs.get(id);if(j?.studyId)await cancel(j);},persist:persistStudy,
-  slots:()=>clusterReady()?{studies:clusterConfig.concurrentStudies,runs:64}:{studies:1,runs:1}});
+  slots:()=>clusterReady()?{studies:clusterConfig.concurrentStudies,runs:64}:{studies:1,runs:1},
+  // After a restart, a study waits again for its re-attached cluster jobs (null: the job is not being watched).
+  resumeJob:id=>{const j=jobs.get(id);if(!j)return null;if(['completed','failed','cancelled'].includes(j.status))return Promise.resolve(publicJob(j));if(!clusterJobs.has(id))return null;return new Promise(resolveJob=>jobWaiters.set(id,resolveJob));}});
 function publicStudy(record){
   if(!record)return null;
   const j=jobs.get(record.activeJobId);
@@ -553,10 +555,15 @@ for(const entry of await readdir(RUNS,{withFileTypes:true})) {
   try {
     const dir=resolve(RUNS,entry.name),record=JSON.parse(await readFile(resolve(dir,'job.json'),'utf8'));
     const j={...record,listeners:new Set(),dir,container:`hull-cfd-${entry.name}`,log:Array.isArray(record.logTail)?record.logTail:[],partial:'',geometryHash:record.manifest?.sourceHash,protocolHash:record.manifest?.protocolKey,hydro:record.result?.hydro??JSON.parse(await readFile(resolve(dir,'hydrostatics.json'),'utf8'))};
+    if(!['completed','failed','cancelled'].includes(j.status)&&j.backend==='cluster'&&j.slurmId&&clusterReady()){
+      // A submitted cluster job keeps running on the cluster while the app is closed: re-attach and keep watching it.
+      // Its log is streamed again from the start (the saved tail is only the last lines).
+      j.log=[];j.lineCount=0;j.offset=0;j.timing??={startedAt:Date.now()};j.reattached=true;
+      append(j,`App restarted: re-attached to Slurm job ${j.slurmId}.\n`);
+      jobs.set(j.id,j);clusterJobs.set(j.id,j);continue;
+    }
     if(!['completed','failed','cancelled'].includes(j.status)){
-      // A cluster job left running would only spend the project's allocation: stop it (best effort).
-      if(j.backend==='cluster'&&j.slurmId&&clusterReady())void cluster.cancelRemote(clusterConfig,j.slurmId);
-      else if(j.backend==='cluster'&&!j.slurmId)unnamedClusterJobs.push('hull-'+j.id.slice(0,8));
+      if(j.backend==='cluster'&&!j.slurmId)unnamedClusterJobs.push('hull-'+j.id.slice(0,8));
       j.status='failed';j.error='Local service restarted before this job completed. Inspect its raw logs and submit a new case if needed.';j.stage='Interrupted by service restart';}
     jobs.set(j.id,j);
   } catch { /* Ignore incomplete temporary directories rather than inventing a result. */ }
@@ -567,8 +574,11 @@ for(const entry of await readdir(STUDIES,{withFileTypes:true})){
   if(!entry.isFile()||entry.isSymbolicLink()||!/^[a-f0-9-]{36}\.json$/.test(entry.name))continue;
   try{await studyRunner.restore(JSON.parse(await readFile(resolve(STUDIES,entry.name),'utf8')));}catch{/* Ignore incomplete study snapshots; never fabricate progress or resume execution. */}
 }
+if(clusterJobs.size)void pollCluster();
 server.listen(PORT,HOST,()=>console.log(`Hull Test Bench + OpenFOAM: http://${HOST}:${PORT}\nJobs remain in ${RUNS}\nImage: ${IMAGE}\nResources: ${defaultCores} of ${maxCores} CPU cores by default (choose in the app), ${memory} RAM. CFD output remains unvalidated until convergence and physical testing.`));
-for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{for(const id of [...studyRunner.queuedIds])await studyRunner.cancel(id);for(const id of [...studyRunner.activeIds])await studyRunner.cancel(id);if(active&&active.status!=='cancelled')await cancel(active);server.close(()=>process.exit(0));});
+// Closing the app stops local work. Cluster jobs keep running on the cluster and are re-attached at the next start
+// (use Stop in the app to cancel them); studies still waiting in the queue are cancelled.
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{for(const id of [...studyRunner.queuedIds])await studyRunner.cancel(id);for(const id of [...studyRunner.activeIds]){const s=studyRunner.get(id);if(s?.options?.backend!=='cluster')await studyRunner.cancel(id);}if(active&&active.status!=='cancelled')await cancel(active);server.close(()=>process.exit(0));});
 // A long-running service must not die because one child process closed its pipe early (a refused SSH upload did exactly
 // that). Such stream errors are logged; anything else is still fatal.
 process.on('uncaughtException',error=>{

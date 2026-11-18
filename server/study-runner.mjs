@@ -129,8 +129,8 @@ export const MAX_QUEUED_STUDIES=100;
  * It never retries or resumes work silently.
  */
 export class StudyRunner {
-  constructor({runCase,cancelCase,persist=async()=>{},now=()=>new Date().toISOString(),slots=()=>({studies:1,runs:1})}){
-    this.runCase=runCase;this.cancelCase=cancelCase;this.persist=persist;this.now=now;this.slots=slots;this.records=new Map();this.activeIds=new Set();this.waiting=[];
+  constructor({runCase,cancelCase,persist=async()=>{},now=()=>new Date().toISOString(),slots=()=>({studies:1,runs:1}),resumeJob=()=>null}){
+    this.resumeJob=resumeJob;this.runCase=runCase;this.cancelCase=cancelCase;this.persist=persist;this.now=now;this.slots=slots;this.records=new Map();this.activeIds=new Set();this.waiting=[];
   }
   /** First running study (kept for callers that show one active study). */
   get activeId(){return this.activeIds.values().next().value??null;}
@@ -145,6 +145,27 @@ export class StudyRunner {
   async restore(record){
     if(!record||record.schema!==1||typeof record.id!=='string'||!Array.isArray(record.conditions))return;
     const study=copy(record);
+    // A Quick cluster study whose jobs are still running on the cluster continues: it waits again for those jobs.
+    // Tests that had not been submitted yet are marked interrupted (re-run them); nothing is resubmitted silently.
+    if(study.status==='running'&&study.options?.backend==='cluster'&&study.options?.speed==='quick'){
+      const waits=[],ids=[];
+      for(const c of study.conditions){
+        if(!['pending','running'].includes(c.status))continue;
+        const run=[...c.runs].reverse().find(r=>r.jobId&&!TERMINAL.has(r.status));
+        const done=run&&this.resumeJob(run.jobId);
+        if(done){ids.push(run.jobId);waits.push(done.then(job=>{this.applyJob(study,c,run,job);this.finishCondition(study,c);study.activeJobIds=(study.activeJobIds??[]).filter(id=>id!==run.jobId);return this.save(study);}));}
+        else{c.status='interrupted';c.stage='Not submitted before the restart: re-run it';for(const r of c.runs)if(!TERMINAL.has(r.status))r.status='interrupted';}
+      }
+      if(waits.length){
+        study.stage='Re-attached to cluster jobs after a restart';study.activeJobIds=ids;this.records.set(study.id,study);this.activeIds.add(study.id);await this.save(study);
+        this.running=Promise.all(waits).then(()=>{
+          const unfinished=study.conditions.some(c=>c.status==='interrupted');
+          if(study.status!=='cancelled'){study.status=unfinished?'interrupted':'completed';study.stage=unfinished?'Some tests were not submitted before a restart: re-run them':'Automatic tests finished — review numerical sensitivity and assumptions';}
+        }).catch(error=>{study.status='failed';study.stage='Automatic study stopped';study.error=String(error.message??error);})
+          .finally(async()=>{study.activeJobId=null;study.activeJobIds=[];await this.save(study);this.activeIds.delete(study.id);this.next();});
+        return;
+      }
+    }
     if(['queued','running'].includes(study.status)){
       study.status='interrupted';study.stage='Interrupted by service restart';study.error='The local service restarted. No study work was resumed automatically.';study.activeJobId=null;
       for(const c of study.conditions)if(['pending','running'].includes(c.status)){c.status='interrupted';c.stage='Not resumed after restart';for(const r of c.runs)if(!TERMINAL.has(r.status))r.status='interrupted';}
@@ -187,8 +208,7 @@ export class StudyRunner {
         studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
         onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
       });
-      run.jobId=job.id;run.status=job.status;run.result=job.result??null;run.error=job.error??null;run.hint=job.hint??(job.status==='failed'?explainFailure(job.error):null);if(run.hint&&!condition.hint)condition.hint=run.hint;
-      if(job.status==='cancelled'&&study.status!=='cancelled'){study.status='cancelled';study.stage='Stopped after job cancellation';for(const c of study.conditions)if(['pending','running'].includes(c.status))c.status='cancelled';}
+      this.applyJob(study,condition,run,job);
     }catch(error){
       if(study.status==='cancelled'){run.status='cancelled';return false;}
       run.status=error.preflight===true?'blocked':'failed';run.error=String(error.message??error);run.hint=explainFailure(run.error);if(run.hint&&!condition.hint)condition.hint=run.hint;
@@ -199,6 +219,11 @@ export class StudyRunner {
       await this.save(study);
     }
     return true;
+  }
+  /** Record a finished job on its run (shared by normal runs and runs re-attached after a restart). */
+  applyJob(study,condition,run,job){
+    run.jobId=job.id;run.status=job.status;run.result=job.result??null;run.error=job.error??null;run.hint=job.hint??(job.status==='failed'?explainFailure(job.error):null);if(run.hint&&!condition.hint)condition.hint=run.hint;
+    if(job.status==='cancelled'&&study.status!=='cancelled'){study.status='cancelled';study.stage='Stopped after job cancellation';for(const c of study.conditions)if(['pending','running'].includes(c.status))c.status='cancelled';}
   }
   finishCondition(study,condition){
     condition.result=assessCondition(condition);

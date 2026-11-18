@@ -121,3 +121,27 @@ test('full remains the default speed and keeps all five phases',async()=>{
   await runner.create(plan(1),{id:'full-study'});await runner.running;
   assert.equal(calls.length,5);assert.equal(runner.get('full-study').options.speed,'full');
 });
+
+test('after a restart, a Quick cluster study re-attaches to its running jobs and finishes',async()=>{
+  const saved=[];let release;
+  const runner=new StudyRunner({runCase:async()=>{throw new Error('nothing may be resubmitted');},cancelCase:async()=>{},persist:async s=>{saved.push(s);},
+    resumeJob:id=>id==='job-running'?new Promise(r=>{release=r;}):null});
+  const cond=(id,status,runs)=>({id,label:id,mode:'calm',status,stage:'',speed:'quick',runs});
+  await runner.restore({schema:1,id:'s1',name:'Hull',status:'running',options:{speed:'quick',backend:'cluster',cores:64},progress:{conditionsTotal:3,conditionsFinished:1,solvesFinished:1,solvesMaximum:3},
+    conditions:[cond('done','completed',[{phase:'coarse',status:'completed',jobId:'job-done',result:solverResult('coarse')}]),
+      cond('running','running',[{phase:'coarse',status:'running',jobId:'job-running'}]),
+      cond('unsent','running',[{phase:'coarse',status:'preparing'}])]});
+  let s=runner.get('s1');
+  assert.equal(s.status,'running');assert.deepEqual(s.activeJobIds,['job-running']);assert.ok(runner.activeIds.has('s1'));
+  assert.equal(s.conditions[2].status,'interrupted');
+  release({id:'job-running',status:'completed',result:solverResult('coarse'),error:null});
+  await runner.running;
+  s=runner.get('s1');
+  assert.equal(s.conditions[1].status,'completed');assert.equal(s.conditions[1].result.quick,true);
+  assert.equal(s.status,'interrupted','an unsent test leaves the study re-runnable');assert.ok(!runner.activeIds.has('s1'));
+});
+test('a restored local or Full study is still marked interrupted, never resumed',async()=>{
+  const runner=new StudyRunner({runCase:async()=>{},cancelCase:async()=>{},resumeJob:()=>Promise.resolve({})});
+  await runner.restore({schema:1,id:'s2',name:'Hull',status:'running',options:{speed:'full',backend:'cluster',cores:64},progress:{},conditions:[{id:'a',status:'running',runs:[{phase:'coarse',status:'running',jobId:'j'}]}]});
+  assert.equal(runner.get('s2').status,'interrupted');
+});
