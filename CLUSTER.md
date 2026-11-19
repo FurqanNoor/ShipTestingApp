@@ -45,6 +45,30 @@ The results are identical to a local run:
 3. You can close the test window, but **keep the app (`npm run cfd`) running** until the tests finish, because it fetches the results.
 4. **Stop** cancels the cluster jobs (`scancel`). Closing or restarting the app does **not** cancel them: they keep running on the cluster, and the app re-attaches to them when it starts again and collects the results. Tests that had not been submitted yet when the app closed are marked interrupted; use **Re-run unfinished tests**.
 
+## A second computer at the same time
+
+Two computers can run the app at once against the same Roihu project and folder. Each app tracks only the jobs it submitted, and removes only those jobs' run folders (`<folder>/runs/<job id>`). The solver image installed in the folder is shared.
+
+1. **Install** [Git](https://git-scm.com) and [Node.js](https://nodejs.org) (this project is developed on Node 26). Docker is not needed for cluster runs.
+2. **Get the code:** `git clone https://github.com/FurqanNoor/ShipTestingApp.git`, then `cd ShipTestingApp` and `npm install`.
+3. **Give the computer its own SSH key** (one-time setup, steps 1–4 above). Do not copy the private key from the other computer. MyCSC accepts several keys on one account.
+4. **Sign its certificate.** Every 24 hours, sign this computer's key in MyCSC and save the file as `id_ed25519-cert.pub`. Each key needs its own certificate.
+5. **Copy the settings and results (optional).** To show the same settings, time estimates and existing results, copy these from the first computer's `cfd-runs/` folder into the new one before the first start:
+   - `cluster.json` (settings, no secrets)
+   - `calibration-cluster.json` (time estimates)
+   - `studies/` (results and leaderboard)
+
+   Copy them while no tests are running on the first computer. A study copied mid-run shows as interrupted on the new computer; it is never re-submitted there.
+6. **Start the app** with `npm run cfd`. If `cluster.json` was copied, press **Test connection** in the cluster settings; there is no need to install the solver again.
+
+Things to know:
+
+- **Results stay on the computer that ran the tests.** To see another computer's new results, copy its `cfd-runs/studies/` again. Folders whose names already exist are the same studies.
+- **Reuse of identical runs works only within one computer.** It needs that computer's downloaded jobs.
+- **Split the hulls between the computers.** The same test run on both costs the allocation twice.
+- **Both computers draw on one allocation and one Slurm fair-share.** Running more jobs at once does not make the queue faster.
+- **Keep each computer awake until its tests finish,** because each computer downloads its own results.
+
 ## Automatic housekeeping and recovery
 
 - **Scratch file quota.** Roihu's scratch has a file-count quota (500,000 files for the project). OpenFOAM writes thousands of files per parallel run. Once a run's logs and `postProcessing` are downloaded, the app deletes that run's folder on the cluster; a cancelled run's folder is deleted a minute after `scancel`. Only folders of the form `<folder>/runs/<job id>` are ever deleted. (On 18 Nov 2026 old folders filled the quota and every new run failed writing its files.)
