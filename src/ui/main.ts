@@ -240,10 +240,12 @@ function cfdBoardInner(): string {
   if (!rows.length) return `<h2>OpenFOAM ranking <span>solver results</span></h2><p class="note">No OpenFOAM results yet. Use <b>OpenFOAM → Run automatic tests</b>.</p>`;
   const n = (v: number | null, d = 1) => (v === null ? "-" : v.toFixed(d));
   const cell = (value: string, score: number | null) => `<td>${value}<small>${score === null ? "" : `${n(score, 0)} pts`}</small></td>`;
+  const ranked = rows.filter((r) => r.status === "ranked").length, waiting = rows.filter((r) => r.status === "incomplete").length;
+  const provisional = waiting && ranked ? `<p class="note" style="color:var(--warn, #c90)"><b>Provisional:</b> ${ranked} of ${ranked + waiting} hulls finished. Points are relative to the best finished hull in each column, so they change as the others finish.</p>` : "";
   const tag = (r: (typeof rows)[number]) => r.status === "ranked" ? (r.failures ? `<small style="color:var(--bad)">${r.failures} failed test${r.failures > 1 ? "s" : ""}</small>` : "") : `<small style="color:var(--warn, #c90)">${r.status === "incomplete" ? "Not ranked yet" : "Different settings"}</small>`;
-  return `<h2>OpenFOAM ranking <span>CFD solver results</span></h2><div class="tablewrap"><table>
+  return `<h2>OpenFOAM ranking <span>CFD solver results</span></h2>${provisional}<div class="tablewrap"><table>
     <thead><tr><th>#</th><th style="text-align:left">Hull</th><th>Calm drag<br>mN</th><th>Max roll<br>deg</th><th>GM<br>mm</th><th>Score</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 ? "first" : ""}" title="${esc(r.note || r.settingsLabel)}"><td><span class="place">${r.place ?? "—"}</span></td><td style="text-align:left;white-space:normal">${breakable(r.name)}${tag(r)}</td>
+    ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 && !provisional ? "first" : ""}" title="${esc(r.note || r.settingsLabel)}"><td><span class="place">${r.place ?? "—"}</span></td><td style="text-align:left;white-space:normal">${breakable(r.name)}${tag(r)}</td>
       ${cell(n(r.dragMN, 2), r.scoreDrag)}${cell(n(r.rollDeg), r.scoreRoll)}${cell(n(r.gmMm), r.scoreStability)}<td class="num">${n(r.total, 0)}</td></tr>`).join("")}
     </tbody></table></div><p class="note">Score = average of drag, roll and stability (one third each). Best in each category = 100 points, the rest in proportion; a hull that sinks or capsizes ranks below all hulls without failures. ${reference ? `Compared at: ${esc(reference.speed === "quick" ? "Quick" : "Full")} · ${reference.cores ?? "?"} cores · setup ${esc(reference.protocol)}.` : ""} Hover a row for details.</p>`;
 }
