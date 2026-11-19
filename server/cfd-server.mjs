@@ -493,8 +493,9 @@ async function pollCluster(){
               }
             }
             await finishRun(j);
-            // Results (logs + postProcessing) are local now; free the cluster's file quota.
-            void cluster.removeRemote(clusterConfig,j.remoteDir);
+            // Results (logs + postProcessing) are local now; free the cluster's file quota. The mark is saved so a removal
+            // that fails (network down, expired certificate: 5 folders on 19 Nov) is retried at the next start.
+            j.remoteCleanup=true;await save(j);scheduleRemoteCleanup(j,0);
           }catch(error){if(j.status!=='cancelled')await failRun(j,error);}
           finally{settleJob(j);}
         })();
@@ -686,8 +687,8 @@ for(const entry of await readdir(RUNS,{withFileTypes:true})) {
     jobs.set(j.id,j);
   } catch { /* Ignore incomplete temporary directories rather than inventing a result. */ }
 }
-// Cancelled cluster jobs whose folder removal did not happen before the last shutdown.
-if(clusterReady())for(const j of jobs.values())if(j.remoteCleanup&&j.status==='cancelled')scheduleRemoteCleanup(j,60_000);
+// Cancelled or downloaded cluster jobs whose folder removal did not happen (or failed) before the last shutdown.
+if(clusterReady())for(const j of jobs.values())if(j.remoteCleanup&&['cancelled','completed'].includes(j.status))scheduleRemoteCleanup(j,60_000);
 // Jobs whose submit was in flight when the service stopped have no recorded Slurm id; cancel them by their unique name.
 if(unnamedClusterJobs.length&&clusterReady())void cluster.cancelRemoteByName(clusterConfig,unnamedClusterJobs);
 for(const entry of await readdir(STUDIES,{withFileTypes:true})){
