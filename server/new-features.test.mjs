@@ -4,7 +4,7 @@ import {mkdtemp,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {scanFullLog,analyseWaveGauges,detailedMeshAcceptable} from './result-reader.mjs';
-import {predictRun,learn,remainingStudySeconds,DEFAULTS,PARALLEL_EXPONENT} from './estimator.mjs';
+import {predictRun,learn,remainingStudySeconds,DEFAULTS,PARALLEL_EXPONENT,ISO_SLOWDOWN} from './estimator.mjs';
 import {explainFailure} from './failure-hints.mjs';
 
 test('full log scan covers the whole history, not only the tail',async()=>{
@@ -114,6 +114,14 @@ test('time estimates keep coarse, medium and fine meshes apart',()=>{
   const cal=learn({},{manifest:m('medium'),actualCells:320000,steps:40000,solveWallS:7000,meshWallS:300,cores:64});
   assert.equal(predictRun(m('coarse'),{cores:64,calibration:cal}).cells,c.cells);
   assert.equal(predictRun(m('medium'),{cores:64,calibration:cal}).cells,320000);
+  // isoAdvector borrows the MULES medium calibration at ISO_SLOWDOWN times the cost, until its own runs calibrate it.
+  const iso=level=>({...m(level),numerics:{...m(level).numerics,interfaceCapturing:'isoAdvector'}});
+  const mules=predictRun(m('medium'),{cores:64,calibration:cal}),isoP=predictRun(iso('medium'),{cores:64,calibration:cal});
+  assert.equal(isoP.key,'calm:quick:medium:iso');assert.equal(isoP.cells,320000);
+  assert.ok(Math.abs(isoP.solveS/mules.solveS-ISO_SLOWDOWN)<1e-9,`${isoP.solveS} ${mules.solveS}`);
+  const isoCal=learn(cal,{manifest:iso('medium'),actualCells:320000,steps:40000,solveWallS:9000,meshWallS:300,cores:64});
+  assert.ok(Math.abs(predictRun(iso('medium'),{cores:64,calibration:isoCal}).solveS-9000)<1,'own calibration once learned');
+  assert.equal(predictRun(m('medium'),{cores:64,calibration:isoCal}).solveS,mules.solveS);
 });
 
 test('detailed mesh diagnostics accept snappyHexMesh concave cells but nothing else',()=>{

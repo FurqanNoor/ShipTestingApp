@@ -35,8 +35,13 @@ export const LEVEL_GROWTH={coarse:1,medium:1.8,fine:4.5};
 export function runKey(manifest){
   const mode=manifest?.condition?.kind==='calm'||!manifest?.condition?.kind?'calm':'waves';
   const level=['medium','fine'].includes(manifest?.mesh?.level)?manifest.mesh.level:'coarse';
-  return `${mode}:${manifest?.mesh?.fidelity==='quick'?'quick':'standard'}:${level}${manifest?.numerics?.steady?':steady':''}`;
+  return `${mode}:${manifest?.mesh?.fidelity==='quick'?'quick':'standard'}:${level}${manifest?.numerics?.steady?':steady':''}${manifest?.numerics?.interfaceCapturing==='isoAdvector'?':iso':''}`;
 }
+/**
+ * isoAdvector (interIsoFoam) against MULES on the same calm medium mesh, 192 cores on Roihu, 19 Nov 2026: about
+ * 360 s per simulated second against ~140 s. Used only until isoAdvector runs of that type have calibrated their own key.
+ */
+export const ISO_SLOWDOWN=2.5;
 const baseKey=key=>key.split(':').slice(0,2).join(':');
 const levelOf=key=>key.split(':')[2]??'coarse';
 const levelKey=key=>key.split(':').slice(0,3).join(':');
@@ -47,14 +52,16 @@ export function parameters(key,calibration={}){
   const base={...(DEFAULTS[baseKey(key)]??DEFAULTS['calm:standard'])};base.cellGrowth*=growth;
   // This level's own calibration; otherwise the coarse one (or the older shared one) with the level's cell growth.
   let own=entries[key];
+  const iso=key.endsWith(':iso'),slow=iso&&!own?ISO_SLOWDOWN:1;
   if(!own){
-    // A steady run first borrows the transient calibration of its own mesh level (same mesh, so same cell growth).
+    // A steady or isoAdvector run first borrows the transient MULES calibration of its own mesh level (same mesh, so
+    // same cell growth); isoAdvector then costs ISO_SLOWDOWN times more per cell step.
     const same=levelKey(key)!==key?entries[levelKey(key)]:undefined;
     const fb=same??entries[`${baseKey(key)}:coarse`]??entries[baseKey(key)];
-    if(fb)own={...fb,...(!same&&finite(fb.cellGrowth)?{cellGrowth:fb.cellGrowth*growth}:{}),samples:0};
+    if(fb)own={...fb,...(!same&&finite(fb.cellGrowth)?{cellGrowth:fb.cellGrowth*growth}:{}),...(finite(fb.secondsPerCellStep)?{secondsPerCellStep:fb.secondsPerCellStep*slow}:{}),samples:0};
   }
   const speed=finite(calibration.machineSpeedFactor)?calibration.machineSpeedFactor:1;
-  const out={...base,dtPerFinestCellPerCo:base.dtPerFinestCell/refCo(key),secondsPerCellStep:base.secondsPerCellStep*speed,calibrated:false,samples:0};
+  const out={...base,dtPerFinestCellPerCo:base.dtPerFinestCell/refCo(key),secondsPerCellStep:base.secondsPerCellStep*speed*slow,calibrated:false,samples:0};
   // Older calibrations stored the step per finest cell at the reference Courant limit.
   const legacy=own&&!finite(own.dtPerFinestCellPerCo)&&finite(own.dtPerFinestCell)?{dtPerFinestCellPerCo:own.dtPerFinestCell/refCo(key)}:{};
   if(own)for(const k of KEYS){const v=own[k]??legacy[k];if(finite(v))out[k]=v;}

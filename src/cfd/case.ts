@@ -55,7 +55,7 @@ export interface CfdManifest {
   physics:{densityWaterKgM3:number;densityAirKgM3:number;nuWaterM2S:number;nuAirM2S:number;surfaceTensionNpm:number;gravityMps2:number;flowModel:'laminar';contactAngleAssumptionDeg:90};
   domain:{scale:number;minM:Vec3;maxM:Vec3;upstreamClearanceM:number;downstreamClearanceM:number;sideClearanceM:number;belowKeelClearanceM:number;airClearanceM:number;boundaryIndependent:false;spongeLengthM?:number};
   mesh:{level:MeshLevel;fidelity?:'standard'|'quick';nearHullSpacingM?:number;baseCellSizeM:number;baseCells:[number,number,number];estimatedBaseCells:number;surfaceLevels:[number,number];finestCellM:number;maxCells:number;layers:number;wallCellsAtFinest:number|null;resolutionVerified:false};
-  numerics:{durationS:number;initialDeltaTS:number;maxDeltaTS:number;maxCo:number;maxAlphaCo:number;writeIntervalS:number;recommendedWarmupS:number};
+  numerics:{durationS:number;initialDeltaTS:number;maxDeltaTS:number;maxCo:number;maxAlphaCo:number;writeIntervalS:number;recommendedWarmupS:number;interfaceCapturing?:'MULES'|'isoAdvector'};
   conventions:{waterlineZ:0;flowDirection:Vec3;dragFromForce:'negative Fx';heaveAxis:'+Z';rollAxis:'+X';forceFile:string};
   verification:{status:'not-run';required:string[]};
   notes:string[];
@@ -186,7 +186,7 @@ export function generateOpenFoamCase(input:CfdCaseInput):CfdCasePackage {
     physics:{densityWaterKgM3:998,densityAirKgM3:1.2,nuWaterM2S:1.004e-6,nuAirM2S:1.5e-5,surfaceTensionNpm:.072,gravityMps2:9.81,flowModel:'laminar',contactAngleAssumptionDeg:90},
     domain:{scale:domainScale,minM:minDomain,maxM:maxDomain,upstreamClearanceM:2*L*domainScale,downstreamClearanceM:5*L*domainScale,sideClearanceM:3*L*domainScale,belowKeelClearanceM:3*L*domainScale,airClearanceM:maxDomain[2]-(D-input.load.draftM),boundaryIndependent:false},
     mesh:{level:mesh,fidelity,baseCellSizeM:baseCell,baseCells:cells,estimatedBaseCells:baseCount,surfaceLevels:[Math.max(1,surfaceLevel-1),surfaceLevel],finestCellM:finestCell,maxCells,layers:0,wallCellsAtFinest:wall?wall/finestCell:null,resolutionVerified:false},
-    numerics:{durationS:duration,initialDeltaTS:dt,maxDeltaTS:maxDt,maxCo,maxAlphaCo,writeIntervalS:writeInterval,recommendedWarmupS:Math.min(duration/2,5*L/Math.max(input.speedMps,.05))},
+    numerics:{durationS:duration,initialDeltaTS:dt,maxDeltaTS:maxDt,maxCo,maxAlphaCo,writeIntervalS:writeInterval,recommendedWarmupS:Math.min(duration/2,5*L/Math.max(input.speedMps,.05)),...(input.interfaceCapturing==='isoAdvector'?{interfaceCapturing:'isoAdvector' as const}:{})},
     conventions:{waterlineZ:0,flowDirection:[-1,0,0],dragFromForce:'negative Fx',heaveAxis:'+Z',rollAxis:'+X',forceFile:'postProcessing/hullForces/0/force.dat'},
     verification:{status:'not-run',required:['surfaceCheck: closed, consistently oriented actual solid','mandatory checkMesh topology/meshQuality safety pass; detailed geometry diagnostics separately reviewed','finite solver residuals and bounded alpha.water','final-time completion and force-history stationarity','mass conservation / flux balance','mesh, time-step and domain convergence before ranking']},
     notes:[

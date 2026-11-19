@@ -31,7 +31,7 @@ The results are identical to a local run:
    | Partition | `small` (one shared node, up to 72 h, up to 384 cores). `test` (15 min) is only for a quick trial. **Test connection** lists the partitions with their time limits. |
    | Folder on the cluster | A folder in your project's scratch space, e.g. `/scratch/project_2001234/hulltests` |
    | Cores per test | 64 (the default). Measured on Roihu for a Quick calm test (131k cells): 16 cores 4.9 min, 32 cores 3.5–4.4 min, 64 cores 2.7 min, 128 cores 3.1 min. Keep the same value for every hull: the calm drag can differ slightly with the core count. |
-   | Max hours per run | The upper bound for a job's Slurm time limit (72 h on `small`). Each job actually asks for about 3× its predicted run time plus 30 minutes (at least 1 h). Shorter limits let Slurm fit jobs into gaps (backfill): on 18 Nov 2026, 192-core jobs with a flat 24 h limit waited until 07:00; with 3 h they started within the hour. |
+   | Max hours per run | The upper bound for a job's Slurm time limit (72 h on `small`). Each job actually asks for about 2× its predicted run time plus 45 minutes (at least 1 h). Shorter limits let Slurm fit jobs into gaps (backfill): on 18 Nov 2026, 192-core jobs with a flat 24 h limit waited until 07:00; with 3 h they started within the hour. |
    | Memory per run | 0 uses the partition's default. Raise it only if a run fails with "out of memory". |
    | Hulls at once | How many hulls run side by side. Each Quick hull uses up to 9 jobs at once; each Full hull up to 15 (fewer when it can reuse finished Quick runs, see below). |
 

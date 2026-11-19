@@ -79,7 +79,7 @@ test('only a run folder under <remoteDir>/runs/<uuid> may be removed from the cl
 test('Slurm time limits follow the predicted run time instead of a flat 24 h',async()=>{
   const {timeLimitMinutes,batchScript}=await import('./cluster.mjs');
   const c={hours:24,cores:64,account:'a',partition:'small',remoteDir:'/r'};
-  assert.equal(timeLimitMinutes(c,3600),210);assert.equal(timeLimitMinutes(c,300),60);assert.equal(timeLimitMinutes(c,40*3600),1440);assert.equal(timeLimitMinutes(c,null),1440);
+  assert.equal(timeLimitMinutes(c,3600),165);assert.equal(timeLimitMinutes(c,300),60);assert.equal(timeLimitMinutes(c,40*3600),1440);assert.equal(timeLimitMinutes(c,null),1440);
   assert.match(batchScript(c,{name:'hull-x',minutes:210}),/#SBATCH --time=03:30:00/);
   assert.match(batchScript(c,{name:'hull-x'}),/#SBATCH --time=24:00:00/);
 });
