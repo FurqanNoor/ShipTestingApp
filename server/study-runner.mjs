@@ -262,8 +262,9 @@ export class StudyRunner {
     try{
       const request={...numericalRequest(planned.request,phase,reference,speed),...(study.options?.experiment?.waveGeneration&&planned.request.mode!=='calm'?{waveGeneration:study.options.experiment.waveGeneration}:{})};
       const context=()=>({
-        // Full studies reuse a finished identical Quick solve (same generated case files) instead of re-running it.
-        reuse:speed==='full',
+        // Any study reuses a finished identical solve (same generated case files) instead of re-running it; the reused
+        // run is re-read with the current result reader.
+        reuse:true,
         studyId:study.id,conditionId:condition.id,phase,cores:study.options?.cores,backend:study.options?.backend,isCancelled:()=>study.status==='cancelled',
         onQueued:async id=>{run.jobId=id;run.status='running';study.activeJobId=id;(study.activeJobIds??=[]).push(id);condition.stage=`${phase}: queued`;await this.save(study);if(study.status==='cancelled')await this.cancelCase(id);},
       });

@@ -107,7 +107,8 @@ export interface MotionParseOptions {
   rollAxis?:Vec3;
 }
 
-const MAX_BYTES=64*1024*1024,MAX_SAMPLES=250000;
+// isoAdvector calm runs (2026-11-19c) take ~250k time steps and the force history is written every step (~45 MB).
+const MAX_BYTES=192*1024*1024,MAX_SAMPLES=1000000;
 const zero=():Vec3=>[0,0,0];
 const sum=(v:Vec3[]):Vec3=>v.reduce<Vec3>((a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],[0,0,0]);
 const vector=(v:unknown):v is Vec3=>Array.isArray(v)&&v.length===3&&v.every(n=>typeof n==='number'&&Number.isFinite(n));
@@ -115,12 +116,12 @@ type Value=number|Value[];
 
 function readLines(text:string) {
   if(typeof text!=='string'||!text.trim())throw new Error('OpenFOAM output is empty. No solver results are available.');
-  if(text.length>MAX_BYTES)throw new Error('OpenFOAM output exceeds64MB. Downsample output deliberately or process a bounded averaging window.');
+  if(text.length>MAX_BYTES)throw new Error('OpenFOAM output exceeds 192 MB. Downsample output deliberately or process a bounded averaging window.');
   const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/);
   const headers=lines.filter(l=>l.trim().startsWith('#')).join('\n');
   const rows=lines.map((line,i)=>({line:line.trim(),number:i+1})).filter(r=>r.line&&!r.line.startsWith('#'));
   if(!rows.length)throw new Error('OpenFOAM output contains headers but no result samples.');
-  if(rows.length>MAX_SAMPLES)throw new Error('OpenFOAM output exceeds250,000 samples. Export a bounded result history.');
+  if(rows.length>MAX_SAMPLES)throw new Error('OpenFOAM output exceeds 1,000,000 samples. Export a bounded result history.');
   return {headers,rows};
 }
 

@@ -322,7 +322,7 @@ async function writePackage(dir,files){
 }
 /**
  * Fingerprint of a generated case: every input file, with the job id masked. Two jobs with the same fingerprint are the
- * same simulation (geometry, mesh, numerics and generator version), so a Full study can reuse a finished Quick result
+ * same simulation (geometry, mesh, numerics and generator version), so a study can reuse a finished identical result
  * instead of queueing an identical 192-core run again.
  */
 function caseDigest(files,id){

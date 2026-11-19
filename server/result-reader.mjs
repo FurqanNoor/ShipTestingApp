@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const LOG_LIMIT=5*1024*1024;
-const RESULT_LIMIT=64*1024*1024;
+const RESULT_LIMIT=192*1024*1024;
 const NUMBER='[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?';
 const numeric=new RegExp(`^${NUMBER}$`);
 const finiteToken=value=>typeof value==='string'&&numeric.test(value)&&Number.isFinite(Number(value))?Number(value):null;
@@ -314,7 +314,7 @@ export async function readCfdRunResult(caseDir,options) {
   let forces=null,forceSampleCount=0,lastForceTimeS=null;
   if(forceLocation?.restartSegments>1)warnings.push('Multiple force restart directories exist. Only the latest numeric start segment was read; older data were not merged or substituted.');
   if(forceLocation&&!forceLocation.path)warnings.push('The latest force restart directory has no dimensional force file. Older segments were not substituted.');
-  if(forceFile?.truncated)warnings.push('Force history exceeds64MB and was not partially parsed. Download the raw data or export a bounded history.');
+  if(forceFile?.truncated)warnings.push('Force history exceeds 192 MB and was not partially parsed. Download the raw data or export a bounded history.');
   if(forceFile?.text) {
     try {
       const series=parseForceData(forceFile.text,{sourceFile:forceFile.path});
@@ -332,7 +332,7 @@ export async function readCfdRunResult(caseDir,options) {
   let motion=null,motionSampleCount=0;
   const freeMotion=manifest.mode==='free-motion';
   if(motionLocation?.restartSegments>1)warnings.push('Only the latest rigid-body motion restart segment was read; no segment merging was attempted.');
-  if(motionFile?.truncated)warnings.push('Motion history exceeds64MB and was not partially parsed.');
+  if(motionFile?.truncated)warnings.push('Motion history exceeds 192 MB and was not partially parsed.');
   if(motionFile?.text&&typeof parseMotionData==='function') {
     try {
       const reference=manifest.load?.solverCgM;
