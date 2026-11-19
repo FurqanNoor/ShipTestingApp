@@ -33,6 +33,8 @@ export interface CfdCaseInput {
   maxCo?:number;
   /** Calm tow (hull held fixed): put a background cell face exactly at the still waterline z=0. */
   alignWaterline?:boolean;
+  /** Calm tow: geometric VOF (interIsoFoam) instead of MULES; see useIsoAdvector. */
+  interfaceCapturing?:'MULES'|'isoAdvector';
   maxCells?:number;
   domainScale?:number;
   mode?:'fixed-resistance';
@@ -239,10 +241,30 @@ export function generateOpenFoamCase(input:CfdCaseInput):CfdCasePackage {
         echo 'A few faces exceed generic checkMesh limits (skewness or non-orthogonality up to the relaxed 75°); no invalid cells and within the accepted count.'
     else
         echo 'Mesh quality checks did not pass. Solver stopped before creating results.' >&2\n        exit 1\n    fi\nfi\necho "HULL_CFD_STAGE:meshDetailedDiagnostics"\ncheckMesh -allTopology -allGeometry > log.checkMeshDetailed 2>&1 || true\nif ! grep -q 'Mesh OK' log.checkMeshDetailed; then echo 'Detailed geometry diagnostics need review; see log.checkMeshDetailed. This run is not validated.'; fi\nif [[ -f system/topoSetDict ]]; then run_stage topoSet; fi\nrun_stage setFields\n# HULL_NPROCS>1 splits the solve across CPU cores with MPI. Physics and case inputs are unchanged.\nNPROCS="${'$'}{HULL_NPROCS:-1}"\nif [[ "${'$'}NPROCS" =~ ^[0-9]+$ ]] && (( NPROCS > 1 )); then\n    printf 'FoamFile\\n{\\n    version 2.0;\\n    format ascii;\\n    class dictionary;\\n    object decomposeParDict;\\n}\\nnumberOfSubdomains %s;\\nmethod scotch;\\n' "${'$'}NPROCS" > system/decomposeParDict\n    run_stage decomposePar -force\n    export OMPI_ALLOW_RUN_AS_ROOT=1 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 OMPI_MCA_btl_vader_single_copy_mechanism=none OMPI_MCA_mpi_yield_when_idle=1\n    echo "HULL_CFD_STAGE:interFoam"\n    echo "Running interFoam on ${'$'}NPROCS cores"\n    if ! mpirun --oversubscribe --bind-to none -np "${'$'}NPROCS" ${'$'}{LINEBUF[@]+"${'$'}{LINEBUF[@]}"} interFoam -parallel 2>&1 | tee log.interFoam; then echo 'Stage interFoam failed; see log.interFoam.' >&2; exit 1; fi\nelse\n    run_stage interFoam\nfi\n`;
+  if(input.interfaceCapturing==='isoAdvector')useIsoAdvector(files);
   files['case.foam']='';
   files['README.txt']=`OpenCFD OpenFOAM v2312 fixed-hull free-surface case\n\nRun: bash Allrun\nUse only the pinned distribution/version. The script runs surface/mesh checks and stops on failure. It never deletes prior data. Use a fresh case directory for each variant.\n\nGeometry is the actual original STL transformed from mm to m and shifted vertically by -draft. Inflow is negative X; towing drag is -Fx from hullForces, not the magnitude of an arbitrary component. Moment reference is the supplied CG in the shifted frame; its measured or estimated source is recorded in manifest.json.\n\nA successful solver exit is not a validation certificate. Discard startup and establish stationarity, phase/mass balance, surface/mesh quality and mesh/time/domain convergence before comparing designs. The coarse mesh is a smoke test. The laminar flow and 90-degree wetting assumptions require physical sensitivity checks. Fixed hull cannot predict roll motion.\n\nSee manifest.json for exact protocol, load, geometry hash, dimensions and assumptions.\n`;
   files['manifest.json']=JSON.stringify(manifest,null,2)+'\n';
   return {files,manifest};
+}
+
+/**
+ * Geometric VOF (isoAdvector, interIsoFoam) instead of MULES for the calm tow. With MULES the interface smeared up the
+ * hull wall over the first ~10 s: wet fraction 0.04 at 20-30 mm above the waterline on a 19 mm draft, about 1 mm of
+ * extra water level at the hull, +0.27 N lift and negative pressure drag on fine hulls. With isoAdvector the wall stays
+ * dry above 5 mm, lift is steady from 2 s and drag is positive and steady (verification/overnight-2026-11-19).
+ * The log and progress stage keep the interFoam names that the app parses.
+ */
+function useIsoAdvector(files:Record<string,string|Uint8Array>){
+  const edit=(name:string,from:string|RegExp,to:string)=>{
+    const before=String(files[name]),after=before.replace(from,to);
+    if(after===before)throw new Error(`isoAdvector: ${name} did not contain the expected MULES/interFoam text.`);
+    files[name]=after;
+  };
+  edit('system/fvSolution',/"alpha\.water\.\*"\n    \{[^}]*\}/,`"alpha.water.*"\n    {\n        isoFaceTol 1e-6; surfCellTol 1e-6; nAlphaBounds 3; snapTol 1e-12; clip true;\n        reconstructionScheme isoAlpha; nAlphaCorr 1; nAlphaSubCycles 1; cAlpha 1;\n    }`);
+  edit('system/controlDict','application interFoam;','application interIsoFoam;');
+  edit('Allrun',' interFoam -parallel 2>&1 | tee log.interFoam;',' interIsoFoam -parallel 2>&1 | tee log.interFoam;');
+  edit('Allrun','    run_stage interFoam\n',`    echo "HULL_CFD_STAGE:interFoam"\n    if ! interIsoFoam 2>&1 | tee log.interFoam; then echo 'Stage interFoam failed; see log.interFoam.' >&2; exit 1; fi\n`);
 }
 
 export const generateCase=generateOpenFoamCase;

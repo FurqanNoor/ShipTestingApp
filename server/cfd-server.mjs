@@ -479,7 +479,7 @@ async function pollCluster(){
         void (async()=>{
           try{
             if(j.cancelRequested)return;
-            if(!exit||exit[1]!=='0')throw new Error(state==='TIMEOUT'?`The cluster stopped the job at its ${clusterConfig.hours} h time limit. Increase "Max hours per run" in the cluster settings.`:state==='OUT_OF_MEMORY'?'The cluster job ran out of memory. Set "Memory per run" higher in the cluster settings.':`OpenFOAM stopped on the cluster (Slurm state ${state||'unknown'}, exit ${exit?.[1]??'none'}). Inspect the stage logs; no CFD value was fabricated.`);
+            if(!exit||exit[1]!=='0')throw new Error(state==='TIMEOUT'?`The cluster stopped the job at its time limit (3x the predicted run + 30 min, at most ${clusterConfig.hours} h). If the prediction was too low, raise "Max hours per run" in the cluster settings or run it again: the estimator learns from finished runs.`:state==='OUT_OF_MEMORY'?'The cluster job ran out of memory. Set "Memory per run" higher in the cluster settings.':`OpenFOAM stopped on the cluster (Slurm state ${state||'unknown'}, exit ${exit?.[1]??'none'}). Inspect the stage logs; no CFD value was fabricated.`);
             await setState(j,'solving','Downloading results from the cluster');
             // A finished job's results stay on the cluster, so a lost connection or an expired certificate only delays the download.
             for(let attempt=0,last='';;attempt++){

@@ -32,7 +32,9 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v === undefined
 // waves 2026-11-19: gauges beside the hull's side with incident/reflected separation, wave-maker strength 12, recalibrated gain.
 // calm 2026-11-19b: a background cell face at the still waterline (setFields had filled the tank 0-7 mm too full,
 // hull-dependent, so hulls floated deeper than their weight). Older calm results are not ranked.
-export const PROTOCOLS = { calm: '2026-11-19b', waves: '2026-11-19' } as const;
+// calm 2026-11-19c: isoAdvector (interIsoFoam) instead of MULES. MULES let the interface creep up the hull wall, adding
+// ~0.27 N lift and a few mN of forward push on fine hulls (negative pressure drag). Older calm results are not ranked.
+export const PROTOCOLS = { calm: '2026-11-19c', waves: '2026-11-19' } as const;
 export const PROTOCOL_VERSION = `calm:${PROTOCOLS.calm};waves:${PROTOCOLS.waves}`;
 
 export interface LeaderboardSettings { protocol: string; calmProtocol: string; wavesProtocol: string; speed: string; backend: string; cores: number | null }

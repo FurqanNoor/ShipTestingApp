@@ -207,4 +207,16 @@ describe('calm tank waterline',()=>{
     // Without alignment the face generally lands off the waterline (the bug fixed on 19 Nov 2026).
     expect([.0123,.019,.0271].some(draftM=>!faceAtZero(generateOpenFoamCase(calm({load:{massKg:.23952,draftM,cgM:[.1,0,.02],cgMeasured:true}})).files))).toBe(true);
   });
+  it('runs the calm tow with isoAdvector when asked, keeping the interFoam log and stage names', ()=>{
+    const iso=generateOpenFoamCase(calm({interfaceCapturing:'isoAdvector'})).files, mules=generateOpenFoamCase(calm({})).files;
+    const allrun=String(iso['Allrun']);
+    expect(allrun).toContain('interIsoFoam -parallel 2>&1 | tee log.interFoam');
+    expect(allrun).not.toMatch(/ interFoam -parallel|run_stage interFoam/);
+    expect(allrun.split('HULL_CFD_STAGE:interFoam').length).toBe(3);
+    expect(String(iso['system/fvSolution'])).toMatch(/reconstructionScheme isoAlpha/);
+    expect(String(iso['system/fvSolution'])).not.toMatch(/MULESCorr/);
+    expect(String(iso['system/controlDict'])).toMatch(/^application interIsoFoam;/m);
+    expect(String(mules['Allrun'])).toContain(' interFoam -parallel');
+    expect(String(mules['system/fvSolution'])).toMatch(/MULESCorr yes/);
+  });
 });
