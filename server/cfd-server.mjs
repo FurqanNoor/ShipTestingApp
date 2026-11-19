@@ -56,7 +56,7 @@ const TERMINAL_STUDY=new Set(['completed','failed','cancelled','interrupted']);
 const TERMINAL_JOB=new Set(['completed','failed','cancelled']);
 const DONE_CONDITION=new Set(['completed','failed','blocked','cancelled','interrupted','skipped']);
 
-function publicJob(j){return {backend:j.backend??'local',slurmId:j.slurmId??null,slurmState:j.slurmState??null,remoteDir:j.remoteDir??null,id:j.id,name:j.name,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logLines:j.lineCount??0,createdAt:j.createdAt,updatedAt:j.updatedAt,logTail:j.log.slice(-100),error:j.error||null,hint:j.hint??null,timing:j.timing??null,result:j.result||null,manifest:j.manifest,request:j.request,studyId:j.studyId??null,conditionId:j.conditionId??null,studyPhase:j.studyPhase??null};}
+function publicJob(j){return {backend:j.backend??'local',slurmId:j.slurmId??null,slurmState:j.slurmState??null,remoteDir:j.remoteDir??null,id:j.id,name:j.name,status:j.status,stage:j.stage,cores:j.cores??null,progress:j.progress?{...j.progress,samples:undefined}:null,logLines:j.lineCount??0,createdAt:j.createdAt,updatedAt:j.updatedAt,logTail:j.log.slice(-100),error:j.error||null,hint:j.hint??null,timing:j.timing??null,result:j.result||null,manifest:j.manifest,request:j.request,studyId:j.studyId??null,conditionId:j.conditionId??null,studyPhase:j.studyPhase??null,...(j.remoteCleanup?{remoteCleanup:true}:{})};}
 function settleJob(j){const resolveJob=jobWaiters.get(j.id);if(resolveJob){jobWaiters.delete(j.id);resolveJob(publicJob(j));}}
 async function persistStudy(record){
   const previous=studyWrites.get(record.id)??Promise.resolve();
@@ -501,14 +501,18 @@ async function pollCluster(){
     }
   }finally{clusterPolling=false;}
 }
+function scheduleRemoteCleanup(j,delayMs){
+  setTimeout(async()=>{if(await cluster.removeRemote(clusterConfig,j.remoteDir)){delete j.remoteCleanup;await save(j).catch(()=>{});}},delayMs).unref?.();
+}
 async function cancel(j){
   j.cancelRequested=true;
   j.status='cancelled';j.stage=j.error?'Stopped at time limit':'Cancelled by user';
   const child=j.child;
   if(child){await execute('docker',[...dockerPrefix,'rm','-f',j.container],{env:dockerEnv,timeout:15_000}).catch(()=>{});child.kill('SIGTERM');}
   if(j.backend==='cluster'){clusterJobs.delete(j.id);if(j.slurmId)await cluster.cancelRemote(clusterConfig,j.slurmId);
-    // A cancelled job is killed before its own cleanup: remove its folder once Slurm has stopped it.
-    const dir=j.remoteDir;setTimeout(()=>void cluster.removeRemote(clusterConfig,dir),60_000).unref?.();}
+    // A cancelled job is killed before its own cleanup: remove its folder once Slurm has stopped it. The mark is saved,
+    // so a restart within the minute still removes it (two restarts on 19 Nov left 50 folders behind).
+    if(j.remoteDir){j.remoteCleanup=true;scheduleRemoteCleanup(j,60_000);}}
   await save(j);settleJob(j);void startNext();
 }
 async function requestBody(req){
@@ -680,6 +684,8 @@ for(const entry of await readdir(RUNS,{withFileTypes:true})) {
     jobs.set(j.id,j);
   } catch { /* Ignore incomplete temporary directories rather than inventing a result. */ }
 }
+// Cancelled cluster jobs whose folder removal did not happen before the last shutdown.
+if(clusterReady())for(const j of jobs.values())if(j.remoteCleanup&&j.status==='cancelled')scheduleRemoteCleanup(j,60_000);
 // Jobs whose submit was in flight when the service stopped have no recorded Slurm id; cancel them by their unique name.
 if(unnamedClusterJobs.length&&clusterReady())void cluster.cancelRemoteByName(clusterConfig,unnamedClusterJobs);
 for(const entry of await readdir(STUDIES,{withFileTypes:true})){
