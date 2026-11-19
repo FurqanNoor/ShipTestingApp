@@ -166,15 +166,20 @@ export function removeRemote(c,remoteDir){
 
 /** Slurm batch script: one node, all requested cores, the pinned image through Apptainer with a clean environment. */
 /**
- * Slurm time limit in minutes: 2x the predicted run plus 45 min, at least 1 h, at most the configured hours. A flat 24 h
+ * Slurm time limit in minutes: 2x the predicted run plus 45 min, at least 3 h, at most the configured hours. A flat 24 h
  * limit kept 192-core jobs waiting for hours (backfill only fills gaps a job's limit fits into); on 18 Nov lowering it
  * to 3 h on the waiting jobs was the fix. Calibrated predictions were within about 30% on Roihu; 3x asked for 8 h for
  * 2.7 h isoAdvector runs. A run that still hits the limit is reported as a timeout.
  */
+/**
+ * Never below 3 h: the estimator under-predicts wave runs (96-core wave runs on Roihu, 18-19 Nov: median 57 min, 90th
+ * percentile 72 min, maximum 102 min, against limits of 76-81 min), and 3 h limits still started within minutes.
+ */
+export const MIN_LIMIT_MINUTES=180;
 export function timeLimitMinutes(c,predictedS){
   const cap=Math.max(1,c.hours)*60;
   if(!(predictedS>0))return cap;
-  return Math.min(cap,Math.max(60,Math.ceil(2*predictedS/60)+45));
+  return Math.min(cap,Math.max(MIN_LIMIT_MINUTES,Math.ceil(2*predictedS/60)+45));
 }
 export function batchScript(c,{name,cores=c.cores,minutes=c.hours*60}){
   const m=Math.max(1,Math.round(minutes)),hh=String(Math.floor(m/60)).padStart(2,'0'),mm=String(m%60).padStart(2,'0');
