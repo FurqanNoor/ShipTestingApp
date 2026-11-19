@@ -24,6 +24,8 @@ export function normaliseClusterConfig(input={}){
   const int=(v,lo,hi,d)=>Number.isInteger(Number(v))&&Number(v)>=lo&&Number(v)<=hi?Number(v):d;
   c.cores=int(c.cores,1,512,32);c.memoryGb=int(c.memoryGb,0,4096,0);c.hours=int(c.hours,1,336,24);c.concurrentStudies=int(c.concurrentStudies,1,200,20);
   if(c.remoteDir.endsWith('/'))c.remoteDir=c.remoteDir.slice(0,-1);
+  // A new user only needs username and project: the folder defaults to their own place on the project's scratch.
+  if(!c.remoteDir&&SAFE.user.test(c.user)&&SAFE.account.test(c.account))c.remoteDir=`/scratch/${c.account}/${c.user}/hulltests`;
   return c;
 }
 export function clusterProblems(c){

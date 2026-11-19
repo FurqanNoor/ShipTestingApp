@@ -34,7 +34,9 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v === undefined
 // hull-dependent, so hulls floated deeper than their weight). Older calm results are not ranked.
 // calm 2026-11-19c: isoAdvector (interIsoFoam) instead of MULES. MULES let the interface creep up the hull wall, adding
 // ~0.27 N lift and a few mN of forward push on fine hulls (negative pressure drag). Older calm results are not ranked.
-export const PROTOCOLS = { calm: '2026-11-19c', waves: '2026-11-19' } as const;
+// calm 2026-11-20: 28 L/U towing (was 40) averaged over the second half (was the last 60%), ~30% faster; force sums
+// no longer printed to the solver log. Older calm results are not ranked.
+export const PROTOCOLS = { calm: '2026-11-20', waves: '2026-11-19' } as const;
 export const PROTOCOL_VERSION = `calm:${PROTOCOLS.calm};waves:${PROTOCOLS.waves}`;
 
 export interface LeaderboardSettings { protocol: string; calmProtocol: string; wavesProtocol: string; speed: string; backend: string; cores: number | null }

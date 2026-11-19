@@ -152,6 +152,9 @@ function initialRecord(plan,{id,name,now,speed='full',cores=1,backend,protocolVe
  * earlier 0.8 / 4 ms raised calm drag by +16%, +6% and +21%, always upward: a real time-step bias, not noise. Waves keep
  * Courant 1 / 4 ms (their own interface Courant limit applies; see waves.ts).
  */
+/** Calm tow length in hull lengths (L/U units), and the floor in seconds (70% of the earlier 40 L/U, 24 s). */
+export const CALM_LENGTHS=28,CALM_MIN_S=17;
+export const calmDuration=(lengthM,speedMps)=>Math.max(CALM_MIN_S,CALM_LENGTHS*lengthM/speedMps);
 export function stepControls(calm){return calm?{timeStepS:.0005,maxDeltaTS:.002,maxCo:.4}:{timeStepS:.001,maxDeltaTS:.004,maxCo:1};}
 export function numericalRequest(request,phase,fineResult,speed='full'){
   const tris=request.trianglesMm;let xmin=Infinity,xmax=-Infinity;
@@ -159,18 +162,19 @@ export function numericalRequest(request,phase,fineResult,speed='full'){
   const lengthM=(xmax-xmin)/1000,period=request.wavePeriodS;
   // Full-mode wave tests run exactly the Quick wave case (see WAVE_PHASES).
   if(speed==='quick'||speed==='experiment'||(speed==='full'&&request.mode!=='calm'&&phase==='coarse')){
-    // Calm: 40 hull lengths of towing, averaged over the last 60%. 30 s Roihu runs of real competition-style hulls settled
-    // only after ~8-12 s; a 16 L/U run (11.7 s) read 9-23% low by different amounts per hull. 12-30 s is within ~2-5%.
+    // Calm: 28 hull lengths of towing (CALM_LENGTHS), averaged over the second half. On the 30 finished isoAdvector runs of
+    // 19 Nov 2026 (10 hulls x 3 loads, 40 L/U) truncating to 70% and averaging the second half changed drag by 1.5% on
+    // average and 5.7% at most, and saves ~30% of the run; 60% length changed it by up to 14%, 50% by up to 29%.
     // Waves: arrival + 8 periods (set by the case generator).
     // Courant-limited adaptive steps instead of a fixed 0.5 ms cap.
-    const calm=request.mode==='calm',duration=calm?Math.max(24,40*lengthM/request.speedMps):1;
+    const calm=request.mode==='calm',duration=calm?calmDuration(lengthM,request.speedMps):1;
     return {...request,fidelity:'quick',durationS:duration,mesh:phase==='medium'?'medium':'coarse',...stepControls(calm),maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:1};
   }
   // Full = convergence check of the Quick setup: its coarse grid and numerics are Quick's; medium refines the grid by
   // sqrt(2). Same simulated time for every phase (comparisons require it), longer than Quick:
-  // calm the same 40 hull lengths as Quick (averaged over the last 60%), waves 25 periods (~12 measured after warm-up).
+  // calm the same hull lengths as Quick (averaged over the second half), waves 25 periods (~12 measured after warm-up).
   const calm=request.mode==='calm';
-  const duration=calm?Math.max(24,40*lengthM/request.speedMps):25*period;
+  const duration=calm?calmDuration(lengthM,request.speedMps):25*period;
   const base={...request,fidelity:'quick',durationS:duration,mesh:['medium','fine'].includes(phase)?phase:'coarse',...stepControls(calm),maxCells:Math.min(request.maxCells??5000000,5000000),domainScale:phase==='domain'?1.5:1};
   if(phase==='time-step'){
     // Halve both the Courant limit and the cap, so the solver's actual step really halves.

@@ -83,3 +83,10 @@ test('Slurm time limits follow the predicted run time instead of a flat 24 h',as
   assert.match(batchScript(c,{name:'hull-x',minutes:210}),/#SBATCH --time=03:30:00/);
   assert.match(batchScript(c,{name:'hull-x'}),/#SBATCH --time=24:00:00/);
 });
+
+test('a new user gets a cluster folder from username and project',async()=>{
+  const {normaliseClusterConfig}=await import('./cluster.mjs');
+  assert.equal(normaliseClusterConfig({user:'judge1',account:'project_2001234'}).remoteDir,'/scratch/project_2001234/judge1/hulltests');
+  assert.equal(normaliseClusterConfig({user:'judge1',account:'project_2001234',remoteDir:'/scratch/x/y/'}).remoteDir,'/scratch/x/y');
+  assert.equal(normaliseClusterConfig({user:'',account:'project_2001234'}).remoteDir,'');
+});

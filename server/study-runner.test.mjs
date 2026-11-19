@@ -113,10 +113,10 @@ test('quick studies run one solve per selected condition with quick fidelity: ca
   assert.deepEqual(qm,fm);
   const tris=[0,0,0,200,0,0,0,10,0];
   const q=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null,'quick');
-  assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.4);assert.ok(Math.abs(q.durationS-Math.max(24,40*.2/.3))<1e-9);
+  assert.equal(q.fidelity,'quick');assert.equal(q.maxCo,.4);assert.ok(Math.abs(q.durationS-Math.max(17,28*.2/.3))<1e-9);
   const full=numericalRequest({mode:'calm',speedMps:.3,trianglesMm:tris},'coarse',null);
-  // Full's coarse grid and numerics are Quick's, over a longer window (40 hull lengths, the same as Quick).
-  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.002);assert.equal(full.maxCo,.4);assert.ok(Math.abs(full.durationS-Math.max(24,40*.2/.3))<1e-9);
+  // Full's coarse grid and numerics are Quick's, over a longer window (28 hull lengths, the same as Quick).
+  assert.equal(full.fidelity,'quick');assert.equal(full.maxDeltaTS,.002);assert.equal(full.maxCo,.4);assert.ok(Math.abs(full.durationS-Math.max(17,28*.2/.3))<1e-9);
   // Full's single wave solve is exactly the Quick wave case.
   const wq=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'coarse',null,'quick'),wf=numericalRequest({mode:'beam-waves',speedMps:0,wavePeriodS:.45,trianglesMm:tris},'coarse',null,'full');
   assert.deepEqual(wq,wf);assert.equal(wf.mesh,'coarse');assert.equal(wf.maxCo,1);

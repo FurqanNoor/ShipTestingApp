@@ -77,14 +77,14 @@ describe('Quick fidelity',()=>{
 describe('Test picker',()=>{
   const selected=():CfdSelection=>({id:1,name:'Hull',trianglesMm:boxHull(200,60,40),sizeMm:[200,60,40],massG:28,speedMps:.3,cgM:[0,0,0]});
   it('defaults to one quick calm test, not all nine',()=>{
-    expect(DEFAULT_AUTO_CHOICE).toEqual({speed:'quick',cores:null,conditions:['250g-calm']});
-    expect(plannedSolves(DEFAULT_AUTO_CHOICE)).toBe(1);
+    expect(DEFAULT_AUTO_CHOICE).toEqual({speed:'quick',cores:null,conditions:[...AUTO_CONDITION_IDS]});
+    expect(plannedSolves(DEFAULT_AUTO_CHOICE)).toBe(9);
     expect(plannedSolves({speed:'full',cores:null,conditions:AUTO_CONDITION_IDS})).toBe(15);
     expect(AUTO_CONDITION_IDS).toHaveLength(9);expect(AUTO_CONDITION_IDS.some(id=>id.endsWith('-low'))).toBe(false);
   });
   it('drops unknown or duplicate tests and keeps protocol order',()=>{
     expect(normaliseChoice({speed:'full',cores:3,conditions:['350g-high','bogus','150g-calm','150g-calm']})).toEqual({speed:'full',cores:3,conditions:['150g-calm','350g-high']});
-    expect(normaliseChoice({speed:'turbo',cores:-2})).toEqual({speed:'quick',cores:null,conditions:['250g-calm']});
+    expect(normaliseChoice({speed:'turbo',cores:-2})).toEqual({speed:'quick',cores:null,conditions:[...AUTO_CONDITION_IDS]});
   });
   it('sends the chosen tests, speed and cores with the CAD',()=>{
     const request=buildAutomaticStudyRequest(selected(),{speed:'quick',cores:4,conditions:['150g-calm','250g-high']});

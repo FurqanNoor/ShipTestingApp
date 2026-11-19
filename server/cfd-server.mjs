@@ -22,7 +22,8 @@ import * as cluster from './cluster.mjs';
 
 const execute=promisify(execFile);
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const RUNS=resolve(ROOT,'cfd-runs');
+// CFD_RUNS_DIR: a separate data folder (e.g. a second instance for testing a fresh setup).
+const RUNS=process.env.CFD_RUNS_DIR?resolve(process.env.CFD_RUNS_DIR):resolve(ROOT,'cfd-runs');
 const STUDIES=resolve(RUNS,'studies');
 const IMAGE='opencfd/openfoam-run@sha256:8d411a033af4a841c98ccaab7a49407812a6d78ba22e501fa1c92b2038d39a76';
 const PORT=Number(process.env.PORT||5173),HOST='127.0.0.1';
@@ -481,7 +482,7 @@ async function pollCluster(){
         void (async()=>{
           try{
             if(j.cancelRequested)return;
-            if(!exit||exit[1]!=='0')throw new Error(state==='TIMEOUT'?`The cluster stopped the job at its time limit (2x the predicted run + 45 min, at most ${clusterConfig.hours} h). If the prediction was too low, raise "Max hours per run" in the cluster settings or run it again: the estimator learns from finished runs.`:state==='OUT_OF_MEMORY'?'The cluster job ran out of memory. Set "Memory per run" higher in the cluster settings.':`OpenFOAM stopped on the cluster (Slurm state ${state||'unknown'}, exit ${exit?.[1]??'none'}). Inspect the stage logs; no CFD value was fabricated.`);
+            if(!exit||exit[1]!=='0')throw new Error(state==='TIMEOUT'?`The cluster stopped the job at its time limit (2x the predicted run + 45 min, at most ${clusterConfig.hours} h). If the prediction was too low, raise "Max hours per run" in the cluster settings or run it again: the estimator learns from finished runs.`:state==='OUT_OF_MEMORY'?'The cluster job ran out of memory. Set "Memory per run" higher in the cluster settings.':/^CANCELLED/.test(state)?'Cancelled on the cluster (scancel or an administrator), not by this app. Not a hull result: re-run this test if it is needed.':`OpenFOAM stopped on the cluster (Slurm state ${state||'unknown'}, exit ${exit?.[1]??'none'}). Inspect the stage logs; no CFD value was fabricated.`);
             await setState(j,'solving','Downloading results from the cluster');
             // A finished job's results stay on the cluster, so a lost connection or an expired certificate only delays the download.
             for(let attempt=0,last='';;attempt++){

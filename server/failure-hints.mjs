@@ -1,5 +1,8 @@
 /** Plain-language explanations for common failures. The raw error and logs are always kept as well. */
 const HINTS=[
+  {test:/Cancelled on the cluster/i,
+    title:'Cancelled on the cluster',
+    hint:'The job was stopped on Roihu (scancel or an administrator), not by this app. It says nothing about the hull. Re-run the test if you need it.'},
   {test:/non-positive transverse GM|no stable free-motion start|capsiz/i,
     title:'Stability failure: capsizes under the standard load',
     verdict:'stability-failure',
