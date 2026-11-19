@@ -76,15 +76,21 @@ export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; re
     const name = str(s.name) || 'Hull';
     byHull.set(name, [...(byHull.get(name) ?? []), s]);
   }
-  // Reference settings: those used by the most hulls.
-  const counts = new Map<string, { n: number; s: LeaderboardSettings }>();
+  // Reference settings: those used by the most hulls with finished tests at the current setup, then by the most hulls
+  // with any finished test, then by the most hulls at all. Cancelled or empty studies (and imported old ones) must not
+  // outvote the settings the judges are actually running.
+  const finished = (s: R, currentOnly: boolean) => arr(s.conditions).some(c => str(c.status) === 'completed' &&
+    (!currentOnly || (modeOf(c) === 'calm' ? settingsOf(s).calmProtocol === PROTOCOLS.calm : settingsOf(s).wavesProtocol === PROTOCOLS.waves)));
+  const counts = new Map<string, { n: number[]; s: LeaderboardSettings }>();
   for (const list of byHull.values()) {
     for (const k of new Set(list.map(s => settingsKey(settingsOf(s))))) {
-      const st = settingsOf(list.find(s => settingsKey(settingsOf(s)) === k));
-      counts.set(k, { n: (counts.get(k)?.n ?? 0) + 1, s: st });
+      const atK = list.filter(s => settingsKey(settingsOf(s)) === k);
+      const prev = counts.get(k)?.n ?? [0, 0, 0];
+      const n = [prev[0] + (atK.some(s => finished(s, true)) ? 1 : 0), prev[1] + (atK.some(s => finished(s, false)) ? 1 : 0), prev[2] + 1];
+      counts.set(k, { n, s: settingsOf(atK[0]) });
     }
   }
-  const referenceBase = [...counts.values()].sort((a, b) => b.n - a.n)[0]?.s ?? null;
+  const referenceBase = [...counts.values()].sort((a, b) => b.n[0] - a.n[0] || b.n[1] - a.n[1] || b.n[2] - a.n[2])[0]?.s ?? null;
   const refKey = referenceBase ? settingsKey(referenceBase) : '';
   // Reference setup per test type: the newest used at the reference settings. Older results of that type do not count.
   const atRef = studies.map(rec).filter(s => settingsKey(settingsOf(s)) === refKey).map(settingsOf);
@@ -113,11 +119,13 @@ export function cfdLeaderboard(studies: unknown[]): { rows: LeaderboardRow[]; re
     }
     merged.set(name, { latest: same[same.length - 1], conditions, outdated });
   }
-  // Reference programme: the largest set of tests that most hulls ran.
+  // Reference programme: the largest set of tests that most hulls ran. Tests run only with an older setup count too, so
+  // that hulls with outdated calm results show "re-run" instead of calm drag silently dropping out of the ranking.
   const programmes = new Map<string, number>();
-  for (const { conditions } of merged.values()) {
-    if (!conditions.size) continue;
-    const k = [...conditions.keys()].sort().join(',');
+  for (const { conditions, outdated } of merged.values()) {
+    const ids = new Set([...conditions.keys(), ...outdated]);
+    if (!ids.size) continue;
+    const k = [...ids].sort().join(',');
     programmes.set(k, (programmes.get(k) ?? 0) + 1);
   }
   const programme = [...programmes.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0] ?? '';

@@ -66,4 +66,18 @@ describe('CFD hackathon leaderboard',()=>{
     const badRerun=study('G',[{...wave(250,2),status:'failed',result:null}],opts,'2026-11-18T02:00:00Z');
     expect(cfdLeaderboard([full('A',.01,5),good,badRerun]).rows.find(r=>r.name==='G')!.status).toBe('ranked');
   });
+  it('picks the settings with finished results at the current setup, not cancelled or imported old studies',()=>{
+    const cancelled=(n:string)=>study(n,full(n,.01,1).conditions.map(c=>({...(c as object),status:'cancelled',result:null})),{...opts,speed:'full'});
+    const {rows,reference}=cfdLeaderboard([full('A',.01,5),full('B',.02,3),cancelled('C'),cancelled('D'),cancelled('E')]);
+    expect(reference?.speed).toBe('quick');
+    expect(rows.filter(r=>r.status==='ranked').map(r=>r.name).sort()).toEqual(['A','B']);
+  });
+  it('keeps calm drag in the programme when most hulls only have outdated calm results',()=>{
+    const oldCalm={...opts,protocolVersion:'calm:2026-11-19c;waves:2026-11-19'};
+    const olds=['O1','O2','O3'].map(n=>study(n,full(n,.01,1).conditions,oldCalm));
+    const {rows,conditionIds}=cfdLeaderboard([full('A',.01,5),...olds]);
+    expect(conditionIds).toContain('150g-calm');
+    expect(rows.find(r=>r.name==='A')!.status).toBe('ranked');
+    const o=rows.find(r=>r.name==='O1')!;expect(o.status).toBe('incomplete');expect(o.note).toMatch(/current solver setup: 150g-calm, 250g-calm/);
+  });
 });

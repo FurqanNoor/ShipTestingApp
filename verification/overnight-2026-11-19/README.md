@@ -166,6 +166,39 @@ All evidence is in `verification/calm-wall-creep/`.
 4. **Not modelled:**
    - **Wind:** the air drag of the dry hull at towing speed is included, about 0.3 mN. A real wind is not.
    - **Forward speed in waves:** wave tests have the hull at zero forward speed, in beam seas.
-5. **Shorter calm runs.** With isoAdvector the drag of light loads is steady after 2–4 s, but heavy loads swing for 10 s or more. Shortening the 30 s runs could halve the calm compute, but it needs a check on all three loads first.
-6. **Solver log size.** The force function object prints about 10 lines per time step, which makes up about 40% of a 330 MB log. Turning its `log` off would change every generated case and invalidate reuse of the current runs, so it is left for the next setup change.
+5. **Shorter calm runs.** Done: calm protocol 2026-11-20 (see below).
+6. **Solver log size.** Done with calm protocol 2026-11-20: the force sums are no longer printed to the solver log.
 7. **Keep the PC awake while tests run.** On 19 November the PC lost its network at about 14:55, and the SSH certificate then expired at 18:50. The jobs finished on Roihu and were downloaded after the certificate was renewed, with nothing lost, but results arrived four hours late.
+
+## Hackathon setup (night 19–20 November)
+
+### Calm protocol 2026-11-20: about 30% faster
+
+- **Change:** tow for 28 hull lengths per speed (was 40), at least 17 s, and average over the second half (was the last 60%). Force sums are no longer printed to the log.
+- **Evidence:** cutting the 30 finished 40-length calm runs back to 28 lengths changed the drag by 1.5% on average and 5.7% at most. Shorter cuts were rejected: 60% of the length changed drag by up to 14%.
+- **End-to-end check:** hull 04, all 9 Quick tests, run from a fresh app folder and a fresh Roihu folder. It took 3 h 06 min from submission to the last download, including the queue.
+
+  | Load | Calm drag, 2026-11-20 | Reference (19c, 40 lengths) | Change |
+  |---|---|---|---|
+  | 150 g | 4.75 mN | 4.71 mN | +0.8% |
+  | 250 g | 7.07 mN | 6.69 mN | +5.7% |
+  | 350 g | 12.74 mN | 13.31 mN | −4.3% |
+
+  All six wave tests completed (max roll 3.0–4.0°).
+- **Split-half drift check:** hull 04's 350 g run drifts 13.7% between the two halves of its averaging window, so it shows *Check failed: Completed numerical quality*. The 40-length reference run of the same hull and load drifted 8.6% and failed the same 5% check, as did many runs of the 01–10 ranking. The check only labels the result for review; the hull is still ranked.
+
+### Multiple judges
+
+- Each judge uses their own computer and CSC account ([JUDGES.md](../../JUDGES.md)). The Roihu folder fills itself in from the project and username.
+- **Export results / Import results** under the OpenFOAM ranking combine everyone's tests into one ranking.
+- **Slurm time limits** are at least 3 h, because the estimator under-predicted wave runs (42–102 min at 96 cores).
+
+### Leaderboard fixes found in the end-to-end check
+
+- **The reference settings are chosen by finished results.** Before, cancelled and empty studies counted too. The cancelled Full studies of hulls 11–20 outvoted the Quick runs, and the ranking switched to Full settings.
+- **Outdated calm tests stay in the test programme.** Before, with most hulls holding only older calm results, calm drag silently dropped out of the ranking. Now those hulls show *Re-run with the current solver setup: 150g-calm, 250g-calm, 350g-calm*.
+
+### Old results
+
+- **Archive:** the results for hulls 01–20 are in `cfd-runs/archive-2026-11-19/studies`, and exported to `hull-results-01-20-reference-2026-11-19.json` on the Desktop.
+- **Calm protocol:** their calm tests use protocol 19c. After an import, their wave results count, but their calm tests show *re-run* under the 2026-11-20 setup.
