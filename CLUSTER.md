@@ -29,7 +29,7 @@ The results are identical to a local run:
    | CSC username | Your CSC username |
    | Project (billing) | Your project, e.g. `project_2001234` (shown in MyCSC) |
    | Partition | `small` (one shared node, up to 72 h, up to 384 cores). `test` (15 min) is only for a quick trial. **Test connection** lists the partitions with their time limits. |
-   | Folder on the cluster | A folder in your project's scratch space, e.g. `/scratch/project_2001234/hulltests` |
+   | Folder on the cluster | Filled in automatically as `/scratch/<project>/<username>/hulltests` (your own folder on the project's scratch). Change it only if you need another place. |
    | Cores per test | 64 (the default). Measured on Roihu for a Quick calm test (131k cells): 16 cores 4.9 min, 32 cores 3.5–4.4 min, 64 cores 2.7 min, 128 cores 3.1 min. Keep the same value for every hull: the calm drag can differ slightly with the core count. |
    | Max hours per run | The upper bound for a job's Slurm time limit (72 h on `small`). Each job actually asks for about 2× its predicted run time plus 45 minutes (at least 3 h). Shorter limits let Slurm fit jobs into gaps (backfill): on 18 Nov 2026, 192-core jobs with a flat 24 h limit waited until 07:00; with 3 h they started within the hour. |
    | Memory per run | 0 uses the partition's default. Raise it only if a run fails with "out of memory". |
@@ -46,6 +46,8 @@ The results are identical to a local run:
 4. **Stop** cancels the cluster jobs (`scancel`). Closing or restarting the app does **not** cancel them: they keep running on the cluster, and the app re-attaches to them when it starts again and collects the results. Tests that had not been submitted yet when the app closed are marked interrupted; use **Re-run unfinished tests**.
 
 ## A second computer at the same time
+
+For judges with their **own** CSC account, follow [JUDGES.md](JUDGES.md) instead. This section is about one CSC account used from two computers.
 
 Two computers can run the app at once against the same Roihu project and folder. Each app tracks only the jobs it submitted, and removes only those jobs' run folders (`<folder>/runs/<job id>`). The solver image installed in the folder is shared.
 
