@@ -549,8 +549,33 @@ const server=http.createServer(async(req,res)=>{
     const origin=req.headers.origin;if(origin&&origin!==`http://${host}`)return json(res,403,{error:'Cross-origin solver requests are not allowed. Open the local app URL.'});
     const url=new URL(req.url,`http://${host}`),path=url.pathname;
     if(path==='/api/cfd/status'&&req.method==='GET')return json(res,200,await solverStatus());
-    if(path==='/api/cfd/studies'&&req.method==='GET')return json(res,200,{studies:studyRunner.list().sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt))).slice(-200).map(publicStudy),queue:queueSummary()});
+    if(path==='/api/cfd/studies'&&req.method==='GET')return json(res,200,{studies:studyRunner.list().sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt))).slice(-1000).map(publicStudy),queue:queueSummary()});
     if(path==='/api/cfd/queue'&&req.method==='GET')return json(res,200,queueSummary());
+    // Results exchange between judges: every finished study (record + exact hull geometry) in one JSON file.
+    if(path==='/api/cfd/export'&&req.method==='GET'){
+      const studies=[];
+      for(const record of studyRunner.list())if(TERMINAL_STUDY.has(record.status)){
+        let geometry64=null;try{geometry64=(await readFile(exactGeometryPath(record.id))).toString('base64');}catch{/* older record */}
+        studies.push({record,geometry64});
+      }
+      const body=JSON.stringify({format:'hull-test-bench-results',version:1,exportedAt:new Date().toISOString(),protocol:core.PROTOCOL_VERSION,studies});
+      res.writeHead(200,{'Content-Type':'application/json','Content-Disposition':`attachment; filename="hull-results-${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.json"`,'Cache-Control':'no-store'});
+      return res.end(body);
+    }
+    if(path==='/api/cfd/import'&&req.method==='POST'){
+      const body=await requestBody(req);
+      if(body?.format!=='hull-test-bench-results'||body.version!==1||!Array.isArray(body.studies))return json(res,400,{error:'This is not a Hull Test Bench results file (use Export results in the app).'});
+      let added=0,skipped=0,invalid=0;
+      for(const entry of body.studies){
+        const r=entry?.record;
+        if(!r||r.schema!==1||typeof r.id!=='string'||!/^[a-f0-9-]{36}$/.test(r.id)||!Array.isArray(r.conditions)||!TERMINAL_STUDY.has(r.status)){invalid++;continue;}
+        if(studyRunner.get(r.id)){skipped++;continue;}
+        if(typeof entry.geometry64==='string'&&entry.geometry64){const g=Buffer.from(entry.geometry64,'base64');if(g.length&&g.length%72===0)await writeFile(exactGeometryPath(r.id),g);}
+        const record={...r,imported:{at:new Date().toISOString(),exportedAt:String(body.exportedAt??'')}};
+        await persistStudy(record);await studyRunner.restore(record);added++;
+      }
+      return json(res,200,{added,skipped,invalid});
+    }
     if(path==='/api/cfd/cluster'&&req.method==='GET')return json(res,200,{config:clusterConfig,problems:cluster.clusterProblems(clusterConfig),check:clusterCheck,install:clusterInstall,activeJobs:clusterJobs.size,certificate:await cluster.certificateStatus(clusterConfig)});
     if(path==='/api/cfd/cluster'&&req.method==='POST'){
       const next=cluster.normaliseClusterConfig({...clusterConfig,...await requestBody(req)});

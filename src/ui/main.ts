@@ -237,7 +237,7 @@ function boardsHtml(): string {
 function cfdBoardInner(): string {
   if (cfdStudies === null) return `<h2>OpenFOAM ranking <span>solver results</span></h2><p class="note">Start the app with <code>npm run cfd</code> to see OpenFOAM results here.</p>`;
   const { rows, reference } = cfdLeaderboard(cfdStudies);
-  if (!rows.length) return `<h2>OpenFOAM ranking <span>solver results</span></h2><p class="note">No OpenFOAM results yet. Use <b>OpenFOAM → Run automatic tests</b>.</p>`;
+  if (!rows.length) return `<h2>OpenFOAM ranking <span>solver results</span></h2><p class="note">No OpenFOAM results yet. Use <b>OpenFOAM → Run automatic tests</b>, or import another judge's results.</p>${cfdBoardActions()}`;
   const n = (v: number | null, d = 1) => (v === null ? "-" : v.toFixed(d));
   const cell = (value: string, score: number | null) => `<td>${value}<small>${score === null ? "" : `${n(score, 0)} pts`}</small></td>`;
   const ranked = rows.filter((r) => r.status === "ranked").length, waiting = rows.filter((r) => r.status === "incomplete").length;
@@ -247,8 +247,35 @@ function cfdBoardInner(): string {
     <thead><tr><th>#</th><th style="text-align:left">Hull</th><th>Calm drag<br>mN</th><th>Max roll<br>deg</th><th>GM<br>mm</th><th>Score</th></tr></thead><tbody>
     ${rows.map((r) => `<tr class="${r.place === 1 && rows.length > 1 && !provisional ? "first" : ""}" title="${esc(r.note || r.settingsLabel)}"><td><span class="place">${r.place ?? "—"}</span></td><td style="text-align:left;white-space:normal">${breakable(r.name)}${tag(r)}</td>
       ${cell(n(r.dragMN, 2), r.scoreDrag)}${cell(n(r.rollDeg), r.scoreRoll)}${cell(n(r.gmMm), r.scoreStability)}<td class="num">${n(r.total, 0)}</td></tr>`).join("")}
-    </tbody></table></div><p class="note">Score = average of drag, roll and stability (one third each). Best in each category = 100 points, the rest in proportion; a hull that sinks or capsizes ranks below all hulls without failures. ${reference ? `Compared at: ${esc(reference.speed === "quick" ? "Quick" : "Full")} · ${reference.cores ?? "?"} cores · setup ${esc(reference.protocol)}.` : ""} Hover a row for details.</p>`;
+    </tbody></table></div><p class="note">Score = average of drag, roll and stability (one third each). Best in each category = 100 points, the rest in proportion; a hull that sinks or capsizes ranks below all hulls without failures. ${reference ? `Compared at: ${esc(reference.speed === "quick" ? "Quick" : "Full")} · ${reference.cores ?? "?"} cores · setup ${esc(reference.protocol)}.` : ""} Hover a row for details.</p>${cfdBoardActions()}`;
 }
+/** Judges combine results: export every finished study (with the tested hull shape) to a file; import others' files. */
+function cfdBoardActions(): string {
+  return `<div class="board-actions"><a class="btn small" href="/api/cfd/export" download title="Save every finished test (with the hull shapes) to one file for another judge">Export results</a><label class="btn small" for="cfd-import-file" title="Add another judge's exported results to this ranking">Import results</label><span class="note" id="cfd-import-status" role="status"></span></div>`;
+}
+// The file input lives outside the board, which re-renders every 30 s (a re-render during the file dialog lost the file).
+const cfdImportInput = Object.assign(document.createElement("input"), { type: "file", id: "cfd-import-file", accept: ".json,application/json", multiple: true, hidden: true });
+document.body.append(cfdImportInput);
+cfdImportInput.addEventListener("change", async () => {
+  const input = cfdImportInput;
+  if (!input.files?.length) return;
+  const status = () => document.getElementById("cfd-import-status");
+  const say = (t: string) => { const el = status(); if (el) el.textContent = t; };
+  let added = 0, skipped = 0, invalid = 0;
+  try {
+    for (const file of Array.from(input.files)) {
+      say(`Importing ${file.name}…`);
+      const r = await fetch("/api/cfd/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: await file.text() });
+      const d = await r.json().catch(() => ({})) as { added?: number; skipped?: number; invalid?: number; error?: string };
+      if (!r.ok) throw new Error(d.error ?? `Import failed (${r.status}).`);
+      added += d.added ?? 0; skipped += d.skipped ?? 0; invalid += d.invalid ?? 0;
+    }
+    restoredOnce = false;
+    await refreshCfdBoard();
+    say(`Imported ${added} stud${added === 1 ? "y" : "ies"}${skipped ? `, ${skipped} already here` : ""}${invalid ? `, ${invalid} unreadable` : ""}.`);
+  } catch (e) { say(e instanceof Error ? e.message : String(e)); }
+  input.value = "";
+});
 // ---------- hulls with OpenFOAM tests come back after a reload ----------
 // The workbench only lives in this tab; studies (and their exact tested geometry) live on the server. On load, every hull
 // with a study is put back. Closing one (x) hides it until it gets a newer study.
