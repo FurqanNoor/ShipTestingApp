@@ -3,7 +3,7 @@
 - **Hulls:** all 10 hulls in `Ships/`, excluding `ShipDesign.stl`.
 - **Cluster:** CSC Roihu.
 - **Setup versions:** calm 2026-11-19c, waves 2026-11-19.
-- **Compute:** about 31,700 core-hours from 18:30 on 18 November (budget 35,000).
+- **Compute:** about 32,300 core-hours from 18:30 on 18 November (budget 35,000).
 - **State:** everything below is committed on `main`; nothing is pushed.
 
 ## Final ranking (Quick, all 9 tests per hull, no failures)
@@ -53,7 +53,7 @@ Each cell shows total drag, then pressure drag in brackets, then lift as a share
 - **Pressure drag is positive on every run.** It was negative on slender hulls before the fixes.
 - **Lift is 92–98% of the weight.** That fits a hull held at its static draft while towed, which feels slight suction (sinkage).
 
-## Full checks: 04 and 05 (09 running)
+## Full checks: 04, 05 and 09
 
 Wave tests reuse the Quick runs. Every wave test passes every check:
 
@@ -72,11 +72,16 @@ Calm drag in mN on the coarse mesh, the medium mesh, and the coarse mesh with ha
 | 05, 150 g | 3.07 | 4.83 | 2.97 | 36% | 3% |
 | 05, 250 g | 9.71 | 7.05 | 9.29 | 27% | 4% |
 | 05, 350 g | 14.86 | 13.07 | 13.01 | 12% | 12% |
+| 09, 150 g | 3.24 | 5.44 | 3.09 | 40% | 5% |
+| 09, 250 g | 6.33 | 8.36 | 5.73 | 24% | 9% |
+| 09, 350 g | 13.08 | 12.74 | stopped | 3% | — |
+
+09's 350 g half-time-step run was stopped at 21:26 with the 06 and 07 Full studies started from the app at 21:22. All other runs had finished.
 
 **What this says:**
 
 - **The time step is not the issue:** halving it changes drag by 1–4%, and by 12% at 350 g.
-- **The mesh dominates the uncertainty:** 3–36% between the coarse and medium meshes, with no consistent sign. Calm drag can therefore separate hulls only when it differs by more than about 30%:
+- **The mesh dominates the uncertainty:** 3–40% between the coarse and medium meshes, with no consistent sign. Calm drag can therefore separate hulls only when it differs by more than about 30%:
   - 04, 05, 06, 09 and 03 are one group, at 6.7–8.9 mN;
   - 02 is clearly higher;
   - 07 and 08 are far higher.
