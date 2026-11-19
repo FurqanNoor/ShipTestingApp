@@ -144,8 +144,9 @@ const CLUSTER_SATURATION=512,CELLS_PER_CORE=5000,MAX_CLUSTER_CORES=192;
  */
 function clusterCoresFor(manifest){
   const base=clusterConfig.cores,cells=predictRun(manifest,{cores:base,calibration:clusterCalibration,saturation:CLUSTER_SATURATION}).cells;
-  // Finer-mesh calm checks set Full mode's wall time (54-86 min on 128 cores, 18 Nov): give them the maximum.
-  if(['medium','fine'].includes(manifest?.mesh?.level))return Math.max(base,MAX_CLUSTER_CORES);
+  // Medium and fine meshes follow the same rule. Giving them 192 cores (18 Nov) left 1000-1400 cells per core on the
+  // 180-270k-cell medium calm meshes: three times the core-hours of 64 cores for no measured gain (CLUSTER.md: 131k
+  // cells ran 2.7 min on 64 cores, 3.1 min on 128).
   if(!(cells>0))return base;
   return Math.max(base,Math.min(MAX_CLUSTER_CORES,Math.max(base,Math.ceil(cells/CELLS_PER_CORE/32)*32)));
 }
