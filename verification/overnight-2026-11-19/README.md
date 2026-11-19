@@ -1,89 +1,166 @@
-# Overnight run, 18–19 November 2026: results, fixes and open issues
+# Hull tests, 18–19 November 2026: final ranking, fixes and open issues
 
-All 10 hulls in `Ships/` were tested, `ShipDesign.stl` excluded. Runs used CSC Roihu, setup version calm 2026-11-19 / waves 2026-11-19. Compute: about 17,000 core-hours from 18:30 (budget 35,000).
+- **Hulls:** all 10 hulls in `Ships/`, excluding `ShipDesign.stl`.
+- **Cluster:** CSC Roihu.
+- **Setup versions:** calm 2026-11-19c, waves 2026-11-19.
+- **Compute:** about 31,700 core-hours from 18:30 on 18 November (budget 35,000).
+- **State:** everything below is committed on `main`; nothing is pushed.
 
-## Ranking (Quick: 9 tests per hull, all completed)
+## Final ranking (Quick, all 9 tests per hull, no failures)
 
-Score = average of drag, roll and stability points, one third each. The best hull in each category gets 100 points and the rest in proportion.
+Score = mean of drag, roll and stability points. The best hull in each category gets 100 points and the rest get points in proportion.
 
-| # | Hull | Calm drag (mean of 3 loads) | Max roll in waves (mean of 6) | GM (mean) | Score |
+| # | Hull | Calm drag, mean of 3 loads (pts) | Max roll in waves, mean of 6 (pts) | GM (pts) | Score |
 |---|---|---|---|---|---|
-| 1 | 05 Three-hull trimaran | 18.9 mN | 3.3° | 337 mm | 70.3 |
-| 2 | 04 Twin-hull catamaran | 42.9 mN | 3.3° | 375 mm | 69.5 |
-| 3 | 09 SWATH twin pod | 38.1 mN | 4.0° | 375 mm | 64.1 |
-| 4 | 02 Wide flat scow | 23.4 mN | 3.5° | 263 mm | 60.4 |
-| 5 | 06 Single outrigger proa | 21.9 mN | 3.7° | 253 mm | 57.9 |
-| 6 | 08 Hydrofoil catamaran | 108.2 mN | 3.9° | 303 mm | 56.0 |
-| 7 | 10 Wave-piercing axe bow | 4.0 mN | 14.6° | 24 mm | 42.9 |
-| 8 | 03 Displacement canoe | 5.9 mN | 11.8° | 47 mm | 35.8 |
-| 9 | 01 Deep-V monohull | 5.7 mN | 12.7° | 40 mm | 35.4 |
-| 10 | 07 Hydrofoil V monohull | 87.1 mN | 3.7° | 27 mm | 33.6 |
+| 1 | 04 Twin-hull catamaran | 8.23 mN (81) | 3.3° (99) | 375 mm (100) | **93.5** |
+| 2 | 05 Three-hull trimaran | 8.32 mN (80) | 3.3° (100) | 337 mm (90) | **90.0** |
+| 3 | 09 SWATH twin pod | 8.85 mN (76) | 4.0° (82) | 375 mm (100) | **85.8** |
+| 4 | 06 Single outrigger proa | 8.55 mN (78) | 3.7° (88) | 253 mm (68) | 77.9 |
+| 5 | 02 Wide flat scow | 22.95 mN (29) | 3.5° (94) | 263 mm (70) | 64.5 |
+| 6 | 08 Hydrofoil catamaran | 89.36 mN (8) | 3.9° (84) | 303 mm (81) | 57.3 |
+| 7 | 03 Displacement canoe | 6.68 mN (100) | 11.8° (28) | 47 mm (13) | 46.7 |
+| 8 | 01 Deep-V monohull | 9.59 mN (70) | 12.7° (26) | 40 mm (11) | 35.3 |
+| 9 | 07 Hydrofoil V monohull | 97.02 mN (7) | 3.7° (89) | 27 mm (7) | 34.4 |
+| 10 | 10 Wave-piercing axe bow | 9.07 mN (74) | 14.6° (22) | 23 mm (6) | 34.1 |
 
-**Places 1 and 2 are a tie within the numerical uncertainty.**
-- The drag score is normalised to the lowest-drag hull (10, 4.0 mN), and that is the least reliable drag value (see below).
-- With 2 mN for hull 10, hull 04 ranks first; with 4–8 mN, hull 05 does.
-- The multi-hulls lead mainly through stability: their GM is 6–15× that of the monohulls.
+**How to read it:**
 
-## Full checks on the top hulls (05, 04, 09, 02)
+- **Places 1–2:** 04 and 05 tie on drag (8.23 against 8.32 mN, well inside the mesh uncertainty below) and on roll. 04 leads on initial stability, GM 375 against 337 mm. GM is a hydrostatic number, not a noisy CFD one, so the order 04 > 05 is robust.
+- **Places 1–6:** these are multi-hulls, or a scow and an outrigger. Their roll is 3–4° and their GM is 250–375 mm.
+- **Places 7, 8 and 10:** the monohulls 03, 01 and 10 have the lowest drag but roll 12–15° and have GM below 50 mm.
+- **Hydrofoils (07, 08):**
+  - Their drag is 10× that of every other hull. At the 0.30 m/s towing speed the foils lift only about 5% of the weight, because lift scales with speed squared, so the foils and struts are pure drag.
+  - The hulls are held at static draft, as agreed, so they cannot rise onto the foils.
+- **Previous ranking:** the overnight ranking (05, 04, 09, 02, 06, …) used calm drag from the faulty setup below. That ranking is superseded.
 
-**Wave tests:** every wave test passes every check:
+### Calm drag per load (medium mesh, isoAdvector)
+
+Each cell shows total drag, then pressure drag in brackets, then lift as a share of the hull's weight.
+
+| Hull | 150 g | 250 g | 350 g |
+|---|---|---|---|
+| 01 | 3.47 (1.3) 97% | 8.69 (5.7) 97% | 16.61 (13.1) 96% |
+| 02 | 13.74 (11.4) 92% | 21.55 (19.2) 93% | 33.55 (31.1) 94% |
+| 03 | 4.18 (1.6) 97% | 6.30 (3.2) 97% | 9.56 (5.9) 97% |
+| 04 | 4.71 (1.1) 98% | 6.69 (2.9) 98% | 13.31 (8.4) 97% |
+| 05 | 4.83 (0.7) 97% | 7.05 (2.1) 97% | 13.07 (6.7) 96% |
+| 06 | 5.22 (1.7) 97% | 8.23 (4.0) 96% | 12.21 (7.0) 96% |
+| 07 | 92.46 (85.7) 92% | 91.40 (83.7) 93% | 107.19 (100.0) 94% |
+| 08 | 85.40 (77.1) 95% | 86.93 (77.9) 95% | 95.74 (86.5) 95% |
+| 09 | 5.44 (2.1) 98% | 8.36 (4.7) 98% | 12.74 (7.8) 97% |
+| 10 | 3.46 (1.5) 98% | 6.53 (3.9) 97% | 17.22 (13.8) 97% |
+
+- **Pressure drag is positive on every run.** It was negative on slender hulls before the fixes.
+- **Lift is 92–98% of the weight.** That fits a hull held at its static draft while towed, which feels slight suction (sinkage).
+
+## Full checks: 04 and 05 (09 running)
+
+Wave tests reuse the Quick runs. Every wave test passes every check:
+
 - complete solver history;
 - bounded phase fraction;
 - stationary RMS roll;
-- incoming wave 0.90–1.18× the target height, after separating out the hull's reflection.
+- incident wave 0.90–1.18× the target height.
 
-**Calm drag:** the finer mesh changes drag by 6–15% (05), 9–26% (04), 9–42% (09) and up to 34% (02). Half the time step changes it by 5–19%. Calm drag carries about 10–40% numerical uncertainty, largest for twin hulls and flat bottoms.
+Calm drag in mN on the coarse mesh, the medium mesh, and the coarse mesh with half the time step:
 
-## What was fixed tonight (19 commits on `main`, not pushed)
+| Hull, load | Coarse | Medium (reported) | Half time step | Mesh change | Time-step change |
+|---|---|---|---|---|---|
+| 04, 150 g | 3.29 | 4.71 | 3.31 | 30% | 1% |
+| 04, 250 g | 6.91 | 6.69 | 6.62 | 3% | 4% |
+| 04, 350 g | 10.88 | 13.31 | 12.42 | 18% | 12% |
+| 05, 150 g | 3.07 | 4.83 | 2.97 | 36% | 3% |
+| 05, 250 g | 9.71 | 7.05 | 9.29 | 27% | 4% |
+| 05, 350 g | 14.86 | 13.07 | 13.01 | 12% | 12% |
+
+**What this says:**
+
+- **The time step is not the issue:** halving it changes drag by 1–4%, and by 12% at 350 g.
+- **The mesh dominates the uncertainty:** 3–36% between the coarse and medium meshes, with no consistent sign. Calm drag can therefore separate hulls only when it differs by more than about 30%:
+  - 04, 05, 06, 09 and 03 are one group, at 6.7–8.9 mN;
+  - 02 is clearly higher;
+  - 07 and 08 are far higher.
+
+  This is why the score is mostly decided by roll and GM among the top hulls.
+
+## What was fixed (all on `main`)
+
+### Calm towing tank (today; protocol 2026-11-19c)
+
+All evidence is in `verification/calm-wall-creep/`.
+
+1. **The tank started too full.**
+   - **Cause:** the background grid had no cell face at the still waterline, and `setFields` fills whole cells. The water therefore started 0–7 mm high, depending on the hull's size, and hulls floated deeper than their weight.
+   - **Fix:** the domain now puts a face exactly at z = 0.
+2. **The interface crept up the hull wall.**
+   - **Cause:** the MULES interface scheme let the water–air interface smear several millimetres up the hull wall during every run. On these 20 mm drafts that meant about 1 mm of extra water level at the hull, +0.27 N of lift, and a forward push that made slender hulls' pressure drag negative.
+   - **What was ruled out:** a tank slope, the outlet absorber, surface tension and mesh resolution.
+   - **Fix:** calm tests now use geometric VOF (isoAdvector, `interIsoFoam`). The wall stays dry above 5 mm, and drag is positive and steady. Wave tests keep MULES.
+3. **Cost of the fix:** isoAdvector takes about 2.5× longer per simulated second. A Quick calm test now takes 2.5–5 h. Up to 30 run at once on the cluster, so a full set of 10 hulls finishes in an afternoon.
+
+### Cluster and app (today)
+
+- **Cores:** medium meshes get cores by cell count (about 5,000 cells per core, so 64 cores), not a fixed 192. At about 1,000 cells per core, 192 cores cost three times the core-hours and gave no speed.
+- **Time estimates:**
+  - isoAdvector runs have their own estimator key.
+  - The estimator no longer credits cores beyond about 2,000 cells each.
+  - Slurm limits are 2× the prediction + 45 min.
+- **Downloads:**
+  - Results now download compressed: 17 s instead of more than 15 min for a run with a 330 MB solver log.
+  - The duplicate `service-runner.log` is no longer downloaded.
+  - Four large uncompressed downloads at once never finished before this fix.
+- **Larger force histories:** the result reader accepts force histories up to 1,000,000 samples (was 250,000). Long isoAdvector runs exceed the old limit.
+- **Reuse in every study:** identical runs are reused in every study, not only Full, and re-read with the current reader.
+- **Folder cleanup after cancelling:** a cancelled job's cluster folder is removed even if the app restarts within the minute. Two quick restarts had left 50 folders behind; they were removed.
+- **Start-up check:** studies submitted right after start-up wait for the cluster check instead of being refused with "Start Docker".
+- **Provisional rankings:** both ranking tables say when only some hulls have finished. With 2 of 10 done, hull 10 had looked like the winner.
+
+### Overnight (18–19 November)
 
 **Waves**
-- Gauges now stand beside the hull's side, not at the hull centre. On the SWATH the old near gauge was inside the hull, and its line through the moving hull hung interFoam three times.
-- The reported wave is the incident wave, separated from the hull's reflection with a multi-gauge least-squares method. It was a plain gauge mean before, which read 112–186%.
-- Wave-maker recalibrated in 3D: gains 1/0.861 (medium) and 1/0.910 (high), relaxation strength 12. A strongly rolling hull no longer gets a 33% bigger wave. Evidence: `verification/wave-maker-2026-11-18`.
+- Gauges stand beside the hull's side, not at its centre. A gauge line through the moving SWATH hull hung interFoam.
+- The reported wave is the incident wave, separated from the hull's reflection by a least-squares fit over several gauges.
+- The wave-maker was recalibrated in 3D. A strongly rolling hull no longer gets a 33% bigger wave.
 
 **Calm**
-- Quick calm runs on the medium mesh. The coarse mesh read drag −49% to +44% off it.
+- Quick calm tests use the medium mesh. The coarse mesh read −49% to +44% off it.
 
-**Full mode, now about 1 hour per hull**
-- Wave tests run once, as in Quick. The half-time-step copy changed roll by only 0.4–1.8%.
-- Calm keeps three solves.
-- Identical runs are reused: generated case files are fingerprinted byte for byte. Full for a top hull then adds only the three calm half-time-step runs.
+**Full mode**
+- Wave tests run once; a half-time-step copy changed roll by only 0.4–1.8%.
+- Identical runs are reused, so Full adds only the coarse and half-time-step calm runs.
 
 **Reliability**
-- Light, wide, flat hulls (02 at 150/250 g) blew up the hull-motion coupling. Such runs now retry automatically, escalating up to relaxation 0.1, 5 outer correctors and Courant 0.5. All scow wave tests finished.
-- Roihu's scratch file quota (500,000 files) filled up and every run failed. The app now deletes each run's cluster folder after downloading its results; 287 old folders were removed.
-- Slurm time limits follow the predicted run time (2× + 45 min) instead of a flat 24 h. 192-core jobs then started within the hour instead of at 07:00.
-- Quality checks that a good run can pass:
-  - phase-fraction bounds of 0.1% (calm) and 1% (waves);
-  - force drift of 5%;
-  - snappy's concave cells and a few skew faces accepted.
-  Before this, Full could never pass.
-- A study save that failed on Windows (EPERM on rename) is now retried.
-- The time estimator keeps calibration per mesh level, so medium and fine runs get enough cores.
+- Unstable hull-motion coupling is retried automatically with stronger stabilisation.
+- Run folders are deleted from Roihu after download, which keeps scratch under its 500,000-file quota.
+- Slurm time limits follow the predicted run time.
+- Quality thresholds are ones a good run can pass.
+- A failed study save on Windows (EPERM) is retried.
 
-**User interface**
-- Pop-up tables are aligned: the ranking, the test grid and the results table.
-- Long file names wrap.
-- Resistance is shown in mN.
-- The review column names the failed check, e.g. "Mesh sensitivity 33% (limit 5%)".
-- Both leaderboards (instant estimate and OpenFOAM) are on the main page.
-- Hulls with tests come back in the workbench after a reload.
+**UI**
+- Tables are aligned, and long names wrap.
+- Drag is shown in mN.
+- Failed checks are named.
+- Both leaderboards are on the main page.
+- Tested hulls come back after a reload.
 
 **Data**
-- Old results were archived to `cfd-runs/archive-2026-11-18`, so the leaderboards started empty.
+- Old results were archived to `cfd-runs/archive-2026-11-18`.
 
 ## Tested and rejected
 
-- **Steady-state calm towing (LTS):** about 3× faster, but a hull-dependent bias of −24% to +1%. See `verification/lts-steady-calm`.
-- **Surface tension off:** 15–30% less noise and about 20% faster, but it shifted the trimaran's drag by −37% and did not fix the slender-hull problem below.
-- **Longer generation zone (2 wavelengths):** as effective as a stronger relaxation, but 21% more cells.
+- **Steady-state calm towing (LTS):** about 3× faster, but a hull-dependent bias of −24% to +1% (`verification/lts-steady-calm`).
+- **Surface tension off:** less noise, but it shifted drag by up to −37% and did not cure the wall creep.
+- **Finer cells at the hull wall with MULES:** the creep continued (`verification/calm-wall-creep`).
+- **A longer wave-generation zone:** no better than a stronger relaxation, and 21% more cells.
 
-## Open issues, most important first
+## Open issues and decisions for you
 
-1. **Calm drag of slender, low-drag hulls (01, 03, 10 at light loads) was biased low, with negative pressure drag.** Investigated on hull 10 at 150 g; see "Calm-tank investigation" below. Two causes were found:
-   - **Fixed:** the tank started too full. The background grid had no cell face at z = 0, and `setFields` fills whole cells, so the water started 0–7 mm high, depending on the hull's size. Calm protocol 2026-11-19b puts a face exactly at the waterline, and every calm test is re-run with it.
-   - **Remaining:** the water–air interface creeps up the hull walls. It is smeared over several 2–4 mm cells, and the wet fraction on the wall rises over the first ~10 s of every run. The hull then feels about 1 mm of extra water level: about +0.27 N of lift, and a forward push of a few mN on fine bows and sterns. A 64-second tow showed it is persistent, not a start-up transient.
-2. **Vertical force above the hull's weight.** At the start this was the tank-fill error, now fixed: the run starts at 1.49 N against a weight of 1.47 N. During the run the wall creep adds about 0.27 N on hull 10, so it is not yet the right weight.
-3. **Calm-drag mesh convergence:** 10–40% between the coarse and medium meshes on multi-hulls. Ranking on calm drag can only separate hulls whose drag differs by more than about 30%.
-4. **Scoring robustness:** drag points are proportional to the single lowest drag, the least reliable number. Normalising to the median drag, or using rank points, would make the ranking stable. Not changed: it needs your decision.
-5. **Hydrofoils (07, 08):** held at static draft in calm water, so they cannot rise onto their foils. Documented only, at your request.
+1. **Calm mesh uncertainty of 10–36%.** A fine-mesh calm check would settle it but costs several hours per hull with isoAdvector. Until then, treat calm-drag differences under about 30% as ties.
+2. **Scoring.** Drag points are proportional to the single lowest drag (03 at 6.68 mN), so one uncertain number moves every hull's drag points. Points normalised to the median, or rank points, would be steadier. Not changed: this is your call.
+3. **Test speed and hydrofoils.** All calm tests tow at 0.30 m/s, where foils cannot lift. If the challenge is about speed, add a faster calm test (and free heave/trim) so that 07 and 08 are judged on what they are built for.
+4. **Not modelled:**
+   - **Wind:** the air drag of the dry hull at towing speed is included, about 0.3 mN. A real wind is not.
+   - **Forward speed in waves:** wave tests have the hull at zero forward speed, in beam seas.
+5. **Shorter calm runs.** With isoAdvector the drag of light loads is steady after 2–4 s, but heavy loads swing for 10 s or more. Shortening the 30 s runs could halve the calm compute, but it needs a check on all three loads first.
+6. **Solver log size.** The force function object prints about 10 lines per time step, which makes up about 40% of a 330 MB log. Turning its `log` off would change every generated case and invalidate reuse of the current runs, so it is left for the next setup change.
+7. **Keep the PC awake while tests run.** On 19 November the PC lost its network at about 14:55, and the SSH certificate then expired at 18:50. The jobs finished on Roihu and were downloaded after the certificate was renewed, with nothing lost, but results arrived four hours late.
