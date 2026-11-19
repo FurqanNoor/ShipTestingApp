@@ -191,3 +191,20 @@ describe('hull-motion coupling',()=>{
     expect(text(strong.files,'system/fvSolution')).toContain('nOuterCorrectors 3; nCorrectors 2');
   });
 });
+
+describe('calm tank waterline',()=>{
+  const faceAtZero=(files:Record<string,string|Uint8Array>)=>{
+    const t=String(files['system/blockMeshDict']);
+    const v=[...t.split('vertices')[1].split(');')[0].matchAll(/\(([^()]+)\)/g)].map(m=>m[1].trim().split(/\s+/).map(Number));
+    const z0=Math.min(...v.map(p=>p[2])),z1=Math.max(...v.map(p=>p[2])),n=Number(/hex \([^)]*\) \(\d+ \d+ (\d+)\)/.exec(t)![1]);
+    const k=-z0/((z1-z0)/n);return Math.abs(k-Math.round(k))<1e-6;
+  };
+  it('puts a background cell face exactly at the still waterline for a held calm tow',()=>{
+    for(const draftM of [.0123,.019,.0271]){
+      const load={massKg:.23952,draftM,cgM:[.1,0,.02] as [number,number,number],cgMeasured:true};
+      expect(faceAtZero(generateOpenFoamCase(calm({load,alignWaterline:true})).files)).toBe(true);
+    }
+    // Without alignment the face generally lands off the waterline (the bug fixed on 19 Nov 2026).
+    expect([.0123,.019,.0271].some(draftM=>!faceAtZero(generateOpenFoamCase(calm({load:{massKg:.23952,draftM,cgM:[.1,0,.02],cgMeasured:true}})).files))).toBe(true);
+  });
+});

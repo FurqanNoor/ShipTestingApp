@@ -31,6 +31,8 @@ export interface CfdCaseInput {
   /** Only after the original placed CAD passed size validation. A floating pose can have a larger bounding box. */
   geometryIsPosed?:boolean;
   maxCo?:number;
+  /** Calm tow (hull held fixed): put a background cell face exactly at the still waterline z=0. */
+  alignWaterline?:boolean;
   maxCells?:number;
   domainScale?:number;
   mode?:'fixed-resistance';
@@ -157,7 +159,14 @@ export function generateOpenFoamCase(input:CfdCaseInput):CfdCasePackage {
   const domainScale=input.domainScale??1;positive(domainScale,'Domain scale');if(domainScale<1||domainScale>4)throw new Error('Domain scale must be between 1 and 4; reduce mesh size or increase the case budget when enlarging it.');
   const minDomain:Vec3=[-5*L*domainScale,-B/2-3*L*domainScale,-input.load.draftM-3*L*domainScale];
   const maxDomain:Vec3=[max[0]+2*L*domainScale,B/2+3*L*domainScale,Math.max(L*domainScale,D-input.load.draftM+L/2*domainScale)];
-  const cells=maxDomain.map((v,i)=>Math.max(2,Math.ceil((v-minDomain[i])/baseCell))) as [number,number,number];
+  if(input.alignWaterline){
+    // The still waterline z=0 must be a background cell face. setFields fills every cell whose centre lies below z=0,
+    // so with a face at e.g. +2.7 mm the whole tank started 2.7 mm too full and a held hull sat that much too deep (by
+    // 0-7 mm depending on the hull's size, 19 Nov 2026). Whole cells below and above z=0; refinement halves keep the face.
+    minDomain[2]=-Math.ceil(-minDomain[2]/baseCell-1e-9)*baseCell;
+    maxDomain[2]=Math.ceil(maxDomain[2]/baseCell-1e-9)*baseCell;
+  }
+  const cells=maxDomain.map((v,i)=>Math.max(2,input.alignWaterline&&i===2?Math.round((v-minDomain[i])/baseCell):Math.ceil((v-minDomain[i])/baseCell))) as [number,number,number];
   const baseCount=cells[0]*cells[1]*cells[2];if(baseCount>maxCells)throw new Error('The base domain exceeds the maximum mesh-cell budget.');
   const duration=input.durationS??Math.max(24,40*L/Math.max(input.speedMps,.05));positive(duration,'Run duration');if(duration>600)throw new Error('A single run is limited to 600 simulated seconds.');
   const quick=fidelity==='quick',maxAlphaCo=quick?.5:.25;

@@ -290,7 +290,7 @@ export async function prepareCfdJob(body: unknown, caseId: string): Promise<Prep
     sourceHash: geometryHash, protocolKey: protocolHash,
     load: { massKg,massSource,massMeasured:!automatic,modelCgM, draftM: hydro.draftM, cgM, cgMeasured:cgSource==='measured', cgSource, cgAssumptions, cgAssumptionsConfirmed:cgSource==='cad-estimate' },
     speedMps, geometryKind: sealPrinted ? 'sealed-envelope' : hull.solverGeometryKind, minimumWallThicknessM: sealPrinted ? undefined : minimumWallThicknessM,
-    mesh, fidelity, durationS, timeStepS,maxDeltaTS, maxCo, maxCells, domainScale,
+    mesh, fidelity, durationS, timeStepS,maxDeltaTS, maxCo, maxCells, domainScale, alignWaterline: mode === 'calm',
   });
   const preset=automatic&&mode==='beam-waves'?AUTOMATIC_WAVE_PRESETS.find(w=>{const scale=hull.bounds.lengthM/.22;return Math.abs(w.height*scale-waveHeightM!)<1e-10&&Math.abs(w.period*Math.sqrt(scale)-wavePeriodS!)<1e-10;}):undefined;
   const wg=request.waveGeneration;
