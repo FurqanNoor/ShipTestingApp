@@ -122,6 +122,9 @@ test('time estimates keep coarse, medium and fine meshes apart',()=>{
   const isoCal=learn(cal,{manifest:iso('medium'),actualCells:320000,steps:40000,solveWallS:9000,meshWallS:300,cores:64});
   assert.ok(Math.abs(predictRun(iso('medium'),{cores:64,calibration:isoCal}).solveS-9000)<1,'own calibration once learned');
   assert.equal(predictRun(m('medium'),{cores:64,calibration:isoCal}).solveS,mules.solveS);
+  // Cores beyond ~2000 cells each add no speed: 192 cores on a 320k-cell mesh predict like 160.
+  const at=cores=>predictRun(m('medium'),{cores,calibration:cal,saturation:512}).solveS;
+  assert.equal(at(192),at(160));assert.ok(at(64)>at(160));
 });
 
 test('detailed mesh diagnostics accept snappyHexMesh concave cells but nothing else',()=>{
