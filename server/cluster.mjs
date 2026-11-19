@@ -137,10 +137,13 @@ export function download(c,remoteDir,localDir){
 }
 function downloadOnce(c,remoteDir,localDir){
   return new Promise((res,rej)=>{
-    const s=spawn(SSH[0],[...SSH.slice(1),...sshArgs(c),target(c),`cd '${remoteDir}' && tar -cf - log.* service-runner.log postProcessing 2>/dev/null; true`],{stdio:['ignore','pipe','pipe'],windowsHide:true});
-    const t=spawn(TAR,['-xf','-'],{cwd:localDir,stdio:['pipe','ignore','pipe'],windowsHide:true});
+    // Compressed, and without service-runner.log: it repeats the stage logs (log.*), and the live poll already keeps a
+    // local copy. isoAdvector calm runs write ~330 MB of solver log; the two uncompressed copies (700 MB per run, four
+    // runs at once) never finished inside the timeout on 19 Nov 2026. Solver logs compress about tenfold.
+    const s=spawn(SSH[0],[...SSH.slice(1),...sshArgs(c),target(c),`cd '${remoteDir}' && tar -czf - log.* postProcessing 2>/dev/null; true`],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+    const t=spawn(TAR,['-xzf','-'],{cwd:localDir,stdio:['pipe','ignore','pipe'],windowsHide:true});
     s.stdout.pipe(t.stdin);t.stdin.on('error',()=>{});let err='';s.stderr.on('data',d=>{err+=d;});t.stderr.on('data',d=>{err+=d;});
-    const timer=setTimeout(()=>{s.kill();t.kill();rej(new Error('Downloading results from the cluster timed out.'));},900_000);
+    const timer=setTimeout(()=>{s.kill();t.kill();rej(new Error('Downloading results from the cluster timed out.'));},3_600_000);
     let pending=2,failed=null;const done=code=>{if(code!==0&&!failed)failed=code;if(--pending===0){clearTimeout(timer);failed?rej(new Error(explainSsh(err)||'Downloading results failed.')):res();}};
     // If the local tar stops early, stop ssh too instead of letting it block on a full pipe until the timeout.
     s.once('exit',done);t.once('exit',code=>{if(code!==0)s.kill();done(code);});s.once('error',rej);t.once('error',rej);
