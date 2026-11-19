@@ -46,7 +46,7 @@ const CALIBRATION=resolve(RUNS,'calibration.json');
 let calibration={};
 /* ---------- Optional Slurm cluster backend (e.g. CSC Roihu) ---------- */
 const CLUSTER_CONFIG=resolve(RUNS,'cluster.json'),CLUSTER_CALIBRATION=resolve(RUNS,'calibration-cluster.json');
-let clusterConfig=cluster.normaliseClusterConfig(),clusterCalibration={},clusterCheck=null,clusterInstall={state:'idle',message:''};
+let clusterConfig=cluster.normaliseClusterConfig(),clusterCalibration={},clusterCheck=null,startupClusterCheck=null,clusterInstall={state:'idle',message:''};
 const clusterJobs=new Map();let clusterPolling=false;
 const clusterReady=()=>clusterConfig.enabled&&!cluster.clusterProblems(clusterConfig).length;
 const POLL_MS=20_000;
@@ -295,6 +295,7 @@ function append(j,text){
 }
 async function solverStatus(){
   if(clusterReady()){
+    if(!clusterCheck&&startupClusterCheck)await startupClusterCheck;
     const ok=clusterCheck?.ok===true&&clusterCheck.solverInstalled===true;
     return {available:ok,backend:'cluster',host:clusterConfig.host,image:IMAGE,version:'2312',maxCores:clusterConfig.cores,defaultCores:clusterConfig.cores,
       message:ok?`Runs on ${clusterConfig.host} (${clusterConfig.cores} cores per test, all tests in parallel).`:'Cluster selected: open the cluster settings, press Test connection, then Install solver.'};
@@ -694,7 +695,8 @@ for(const entry of await readdir(STUDIES,{withFileTypes:true})){
   try{await studyRunner.restore(JSON.parse(await readFile(resolve(STUDIES,entry.name),'utf8')));}catch{/* Ignore incomplete study snapshots; never fabricate progress or resume execution. */}
 }
 // Check the cluster connection at startup, so tests can be started without pressing Test connection first.
-if(clusterConfig.enabled&&clusterConfig.user)void cluster.checkCluster(clusterConfig).then(r=>{clusterCheck={ok:true,at:new Date().toISOString(),...r};},e=>{clusterCheck={ok:false,at:new Date().toISOString(),error:e.message};});
+// Requests in the first seconds wait for this check (solverStatus) instead of being refused as "no solver".
+if(clusterConfig.enabled&&clusterConfig.user)startupClusterCheck=cluster.checkCluster(clusterConfig).then(r=>{clusterCheck={ok:true,at:new Date().toISOString(),...r};},e=>{clusterCheck={ok:false,at:new Date().toISOString(),error:e.message};});
 if(clusterJobs.size)void pollCluster();
 for(const id of studyRunner.activeIds){const r=studyRunner.records.get(id);if(r)void ensurePredictions(r).catch(()=>{});}
 server.listen(PORT,HOST,()=>console.log(`Hull Test Bench + OpenFOAM: http://${HOST}:${PORT}\nJobs remain in ${RUNS}\nImage: ${IMAGE}\nResources: ${defaultCores} of ${maxCores} CPU cores by default (choose in the app), ${memory} RAM. CFD output remains unvalidated until convergence and physical testing.`));
